@@ -44,6 +44,64 @@ def save_local(file_buffer, filename):
 from zoneinfo import ZoneInfo
 WIB = ZoneInfo("Asia/Jakarta")
 
+import re
+
+def clean_str_key(val):
+    if pd.isna(val) or val == '-':
+        return ''
+    return re.sub(r'[^A-Z0-9]', '', str(val).upper().strip())
+
+def get_inb(row, inb_agg_df):
+    empty_res = pd.Series({
+        'Rcv_Date': pd.NaT, 
+        'Rcv_Qty': 0.0, 
+        'Inb_Match_Note': 'Belum Diterima / Tidak Ketemu'
+    })
+    item_code = str(row['Item_Code']).strip().upper()
+    if not item_code or item_code == '-':
+        return pd.Series({'Rcv_Date': pd.NaT, 'Rcv_Qty': 0.0, 'Inb_Match_Note': '-'})
+
+    po_str = str(row['PO_No']).strip() if pd.notna(row['PO_No']) else ''
+    subset = pd.DataFrame()
+    match_type = 'No PO'
+
+    if po_str and po_str != '-':
+        po_list = [p.strip().upper() for p in po_str.split(',') if p.strip()]
+        sub_strict = inb_agg_df[inb_agg_df['POnumber'].isin(po_list) & (inb_agg_df['ItemCode'] == item_code)]
+        if not sub_strict.empty:
+            subset = sub_strict
+            match_type = 'Exact Match (PO & Item)'
+        else:
+            core_pos = [p[:12] for p in po_list if len(p) >= 12]
+            sub_item = inb_agg_df[inb_agg_df['ItemCode'] == item_code]
+            if not sub_item.empty and core_pos:
+                sub_flex = sub_item[sub_item['POnumber'].apply(lambda x: any(c in str(x).upper() for c in core_pos))]
+                if not sub_flex.empty:
+                    subset = sub_flex
+                    found_po_vals = subset['POnumber'].unique()
+                    match_type = f'Flexible Match (Sufiks PO beda: input {po_list[0]} vs wms {list(found_po_vals)})'
+    
+    if subset.empty:
+        sub_any_item = inb_agg_df[inb_agg_df['ItemCode'] == item_code]
+        if not sub_any_item.empty:
+            found_pos = ", ".join(sub_any_item['POnumber'].unique())
+            return pd.Series({
+                'Rcv_Date': sub_any_item['ReceivedDate'].max() if 'ReceivedDate' in sub_any_item else pd.NaT,
+                'Rcv_Qty': sub_any_item['RcvQty'].sum() if 'RcvQty' in sub_any_item else 0.0,
+                'Inb_Match_Note': f'⚠️ MISMATCH PO: PO sistem ({po_str}) beda dg WMS ter-receive di PO lain [{found_pos}]'
+            })
+        return empty_res
+
+    rcv_date_val = subset['ReceivedDate'].max() if 'ReceivedDate' in subset else pd.NaT
+    rcv_qty_val = subset['RcvQty'].sum() if 'RcvQty' in subset else 0.0
+    note = 'OK' if match_type.startswith('Exact') else f'ℹ️ {match_type}'
+    
+    return pd.Series({
+        'Rcv_Date': rcv_date_val,
+        'Rcv_Qty': rcv_qty_val,
+        'Inb_Match_Note': note
+    })
+    
 def list_local_archives():
     try:
         pattern = os.path.join(LOCAL_ARCHIVE_DIR, "Tracking_Final_*.xlsx")
@@ -247,64 +305,11 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
         Rcv_Date=('ReceivedDate', 'max'), Rcv_Qty=('RcvQty', 'sum')
     ).reset_index()
 
-   def get_inb(row):
-    empty_res = pd.Series({
-        'Rcv_Date': pd.NaT, 
-        'Rcv_Qty': 0.0, 
-        'Inb_Match_Note': 'Belum Diterima / Tidak Ketemu'
-    })
-    item_code = str(row['Item_Code']).strip().upper()
-    if not item_code or item_code == '-':
-        return pd.Series({'Rcv_Date': pd.NaT, 'Rcv_Qty': 0.0, 'Inb_Match_Note': '-'})
+    inb_agg['Clean_POnumber'] = inb_agg['POnumber'].apply(clean_str_key)
+    inb_agg['Clean_ItemCode'] = inb_agg['ItemCode'].apply(clean_str_key)
 
-    po_str = str(row['PO_No']).strip() if pd.notna(row['PO_No']) else ''
-    subset = pd.DataFrame()
-    match_type = 'No PO'
-
-    if po_str and po_str != '-':
-        po_list = [p.strip().upper() for p in po_str.split(',') if p.strip()]
-        
-        # A. Coba exact/strict match PO + Item
-        sub_strict = inb_agg[inb_agg['POnumber'].isin(po_list) & (inb_agg['ItemCode'] == item_code)]
-        if not sub_strict.empty:
-            subset = sub_strict
-            match_type = 'Exact Match (PO & Item)'
-        else:
-            # B. Fallback toleransi beda suffix ekor PO (misal PO 05 vs 06), tapi ItemCode sama
-            core_pos = [p[:12] for p in po_list if len(p) >= 12]
-            sub_item = inb_agg[inb_agg['ItemCode'] == item_code]
-            if not sub_item.empty and core_pos:
-                sub_flex = sub_item[sub_item['POnumber'].apply(lambda x: any(c in str(x).upper() for c in core_pos))]
-                if not sub_flex.empty:
-                    subset = sub_flex
-                    found_po_vals = subset['POnumber'].unique()
-                    match_type = f'Flexible Match (Sufiks PO beda: input {po_list[0]} vs wms {list(found_po_vals)})'
-    
-    if subset.empty:
-        # Cek apakah item code ini ada di inbound tapi beda PO sama sekali? (buat note nego admin)
-        sub_any_item = inb_agg[inb_agg['ItemCode'] == item_code]
-        if not sub_any_item.empty:
-            found_pos = ", ".join(sub_any_item['POnumber'].unique())
-            return pd.Series({
-                'Rcv_Date': sub_any_item['ReceivedDate'].max(),
-                'Rcv_Qty': sub_any_item['RcvQty'].sum(),
-                'Inb_Match_Note': f'⚠️ MISMATCH PO: PO sistem ({po_str}) beda dg WMS ter-receive di PO lain [{found_pos}]'
-            })
-        return empty_res
-
-    rcv_date_val = subset['ReceivedDate'].max() if 'ReceivedDate' in subset else pd.NaT
-    rcv_qty_val = subset['RcvQty'].sum() if 'RcvQty' in subset else 0.0
-    
-    note = 'OK' if match_type.startswith('Exact') else f'ℹ️ {match_type}'
-    
-    return pd.Series({
-        'Rcv_Date': rcv_date_val,
-        'Rcv_Qty': rcv_qty_val,
-        'Inb_Match_Note': note
-    })
-
-    inb_res = merged.apply(get_inb, axis=1)
-merged[['Rcv_Date', 'Rcv_Qty', 'Inb_Match_Note']] = inb_res
+    inb_res = merged.apply(lambda row: get_inb(row, inb_agg), axis=1)
+    merged[['Rcv_Date', 'Rcv_Qty', 'Inb_Match_Note']] = inb_res
 
     merged['PO_Qty'] = pd.to_numeric(merged['PO_Qty'], errors='coerce').fillna(0)
     merged['Rcv_Qty'] = pd.to_numeric(merged['Rcv_Qty'], errors='coerce').fillna(0)
