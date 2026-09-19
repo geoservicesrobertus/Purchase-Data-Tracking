@@ -153,7 +153,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     pr_data = pr_data[pr_data['PR_Manual_No'].notna() & (pr_data['PR_Manual_No'] != '') & (pr_data['PR_Manual_No'].astype(str) != 'nan')]
 
     pr_2426_df = pd.read_excel(pr_old, sheet_name=0, header=None)
-    closed_info = [pr_2426_df.iloc].copy()
+    closed_info = pr_2426_df.iloc[7:, [2, 6, 7]].copy()
     closed_info.columns = ['PR_Manual_No', 'RequestClosed', 'Item_Code']
     closed_info['Item_Code'] = closed_info['Item_Code'].astype(str).str.strip()
     closed_info['PR_Manual_No_Clean'] = closed_info['PR_Manual_No'].astype(str).str.replace(" ", "")
