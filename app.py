@@ -229,6 +229,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
 # ==========================================
 # 3 MENU UTAMA
 # ==========================================
+import plotly.express as px
 selected_tab = st.radio("Navigation", ["📊 Dashboard", "⚙️ Proses Data", "📥 Download / Arsip"], horizontal=True, label_visibility="collapsed")
 st.markdown("<hr style='margin: 5px 0 15px 0;'>", unsafe_allow_html=True)
 
