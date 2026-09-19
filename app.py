@@ -127,7 +127,7 @@ if 'df_final' not in st.session_state:
 c_left, c_right = st.columns(2)
 logo_b64 = get_base64_image("Logo_PT_Geoservices_4K_Transparent.jpg")
 with c_left:
-    c_img, c_txt = st.columns()
+    c_img, c_txt = st.columns(2)
     with c_img:
         if logo_b64:
             st.markdown(f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 48px; border-radius: 4px; border: 1px solid #ccc;">', unsafe_allow_html=True)
