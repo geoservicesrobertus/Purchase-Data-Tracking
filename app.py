@@ -215,23 +215,54 @@ def process_tracking_data(lo_df, imp_df, pr_df, inb_df):
   return res_df
 
 
-# Streamlit UI Main Flow Stub
+# Streamlit UI Main Flow
 st.set_page_config(page_title="Tracking Pengadaan", layout="wide")
-st.title("Tracking System PR / PO / Inbound")
+st.title("📦 Tracking System PR / PO / Inbound")
 
-uploaded_lo = st.sidebar.file_uploader("Upload PO Lokal", type=["xlsx"])
-uploaded_imp = st.sidebar.file_uploader("Upload PO Impor", type=["xlsx"])
-uploaded_pr = st.sidebar.file_uploader("Upload PR", type=["xlsx"])
-uploaded_inb = st.sidebar.file_uploader("Upload Inbound", type=["xlsx"])
+tabs = st.tabs(["📊 Proses & Tracking", "📥 Download / Arsip Lokal"])
 
-if uploaded_pr and uploaded_inb:
-  try:
-    lo_df = pd.read_excel(uploaded_lo) if uploaded_lo else pd.DataFrame()
-    imp_df = pd.read_excel(uploaded_imp) if uploaded_imp else pd.DataFrame()
-    pr_df = pd.read_excel(uploaded_pr)
-    inb_df = pd.read_excel(uploaded_inb)
+with tabs[0]:
+  st.sidebar.header("Upload File Sumber")
+  uploaded_lo = st.sidebar.file_uploader("Upload PO Lokal", type=["xlsx"])
+  uploaded_imp = st.sidebar.file_uploader("Upload PO Impor", type=["xlsx"])
+  uploaded_pr = st.sidebar.file_uploader("Upload PR", type=["xlsx"])
+  uploaded_inb = st.sidebar.file_uploader("Upload Inbound", type=["xlsx"])
 
-    final_res = process_tracking_data(lo_df, imp_df, pr_df, inb_df)
-    st.dataframe(final_res, use_container_width=True)
-  except Exception as e:
-    st.error(f"Terjadi kesalahan saat memproses data: {e}")
+  if uploaded_pr and uploaded_inb:
+    try:
+      lo_df = pd.read_excel(uploaded_lo) if uploaded_lo else pd.DataFrame()
+      imp_df = pd.read_excel(uploaded_imp) if uploaded_imp else pd.DataFrame()
+      pr_df = pd.read_excel(uploaded_pr)
+      inb_df = pd.read_excel(uploaded_inb)
+
+      final_res = process_tracking_data(lo_df, imp_df, pr_df, inb_df)
+      st.dataframe(final_res, use_container_width=True)
+
+      if st.button("💾 Simpan Hasil ke Arsip Lokal"):
+        ts_str = datetime.now(WIB).strftime("%Y%m%d_%H%M%S")
+        fname = f"Tracking_Final_{ts_str}.xlsx"
+        fpath = os.path.join(LOCAL_ARCHIVE_DIR, fname)
+        final_res.to_excel(fpath, index=False)
+        st.success(f"Berhasil di-save ke {fname} (WIB)")
+    except Exception as e:
+      st.error(f"Terjadi kesalahan saat memproses data: {e}")
+  else:
+    st.info("Silakan upload file PR dan Inbound di sidebar.")
+
+with tabs:
+  st.header("📂 Daftar Arsip Lokal")
+  archives = list_local_archives()
+  if archives:
+    for display_str, fpath, fname in archives:
+      c1, c2 = st.columns()
+      c1.write(display_str)
+      with open(fpath, "rb") as fp:
+        c2.download_button(
+            "⬇️ Download",
+            data=fp,
+            file_name=fname,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key=fname,
+        )
+  else:
+    st.write("Belum ada arsip tersimpan.")
