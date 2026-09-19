@@ -74,7 +74,16 @@ CREDS_DICT = {
 }
 
 def get_gdrive_service():
-    creds = service_account.Credentials.from_service_account_info(CREDS_DICT, scopes=['https://www.googleapis.com/auth/drive'])
+    clean_creds = CREDS_DICT.copy()
+    raw_key = clean_creds["private_key"]
+    # Normalisasi newline jika ada string \n literal atau spasi berlebih
+    if "\\n" in raw_key:
+        clean_creds["private_key"] = raw_key.replace("\\n", "\n")
+    
+    creds = service_account.Credentials.from_service_account_info(
+        clean_creds, 
+        scopes=['https://www.googleapis.com/auth/drive']
+    )
     return build('drive', 'v3', credentials=creds)
 
 def upload_to_gdrive(file_buffer, filename):
