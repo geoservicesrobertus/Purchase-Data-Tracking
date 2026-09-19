@@ -1,5 +1,5 @@
 import base64
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from io import BytesIO
 import os
 import re
@@ -40,7 +40,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-OUTPUT_FOLDER = "saved_reports"
+# Folder penyimpanan lokal permanen
+OUTPUT_FOLDER = r"D:\User Data - WarehouseSPV\Documents\Purchase Data Tracking"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 WIB = ZoneInfo("Asia/Jakarta")
 
@@ -286,10 +287,9 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
       pr_data, po_agg, on=["PR_Manual_No_Clean", "Item_Code"], how="left"
   )
   merged['PO_No'] = merged['PO_No'].fillna("")
-  if 'RequestClosed' in merged.columns:
-    merged = merged[
-        ~((merged['PO_No'] == "") & (merged['RequestClosed'] == "Yes"))
-    ]
+  merged = merged[
+      ~((merged['PO_No'] == "") & (merged['RequestClosed'] == "Yes"))
+  ]
 
   inb_xls = pd.ExcelFile(inb)
   inb_df = pd.concat(
@@ -342,7 +342,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
 
   merged['Status'] = merged.apply(get_status, axis=1)
 
-  # Kalkulasi Qty Outstanding rule
+  # Kalkulasi Qty Outstanding rule (Routing Approval = full PR_Qty, selain itu PO_Qty - Rcv_Qty)
   def calc_outstanding(row):
     if row['Status'] == "Routing Approval":
       return row['PR_Qty_Num']
@@ -386,6 +386,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
   return res
 
 
+# Format keterangan file arsip menggunakan Zona Waktu Jakarta (WIB) tanpa pip tambahan
 def get_formatted_archive_list():
   files = [f for f in os.listdir(OUTPUT_FOLDER) if f.endswith(".xlsx")]
   if not files:
@@ -500,9 +501,10 @@ elif selected_tab == "⚙️ Proses Data":
 
   if sub_proc_option == "1. Purchase Data Tracking (Full ETL)":
     st.markdown(
-        '<div class="erp-panel">Unggah dokumen sumber (.xlsx). Sistem'
+        f'<div class="erp-panel">Unggah dokumen sumber (.xlsx). Sistem'
         " menormalisasi spasi, konsolidasi multi-PR, dan audit status"
-        " <i>RequestClosed</i>.</div>",
+        " <i>RequestClosed</i>. Hasil disimpan permanen di folder lokal"
+        f" <code>{OUTPUT_FOLDER}</code>.</div>",
         unsafe_allow_html=True,
     )
     col_u1, col_u2 = st.columns(2)
@@ -525,7 +527,7 @@ elif selected_tab == "⚙️ Proses Data":
       )
 
     st.write("")
-    run_process = st.button("⚙️ Execute Full ETL & Save", type="primary")
+    run_process = st.button("⚙️ Execute Full ETL & Save Local", type="primary")
 
     if run_process:
       if all([
@@ -551,9 +553,10 @@ elif selected_tab == "⚙️ Proses Data":
 
           st.session_state['df_final'] = df_final
           st.session_state['last_saved'] = saved_filename
+          time_wib_str = now_dt.strftime("%d/%m/%Y pukul %H:%M:%S WIB")
           st.success(
-              "✅ Data berhasil diproses & diarsipkan ke server sebagai"
-              f" `{saved_filename}` (WIB)! Silakan cek menu **📊 Dashboard**."
+              "✅ Data berhasil diproses & disimpan permanen di lokal:"
+              f" `{saved_filepath}` pada **{time_wib_str}**!"
           )
       else:
         st.error("⚠️ Error: Kelima file sumber wajib diunggah lengkap!")
@@ -577,8 +580,8 @@ elif selected_tab == "⚙️ Proses Data":
         latest_path, latest_name = get_latest_archive_filepath()
         if not latest_path:
           st.error(
-              "⚠️ Belum ada file arsip dasar di server. Jalankan Full ETL"
-              " terlebih dahulu!"
+              "⚠️ Belum ada file arsip dasar di server/lokal. Jalankan Full"
+              " ETL terlebih dahulu!"
           )
         else:
           try:
@@ -654,8 +657,9 @@ elif selected_tab == "⚙️ Proses Data":
 elif selected_tab == "📥 Download / Arsip":
   st.subheader("Purchase Data Tracking | Audit & Document Repository")
   st.markdown(
-      '<div class="erp-panel">Arsip historis hasil eksekusi pengolahan data'
-      " tersimpan di server. File terbaru diberi penanda khusus.</div>",
+      f'<div class="erp-panel">Arsip historis tersimpan aman di direktori lokal'
+      f" <code>{OUTPUT_FOLDER}</code>. Waktu tercatat dalam WIB (Zona Waktu"
+      " Jakarta). File terbaru diberi penanda khusus.</div>",
       unsafe_allow_html=True,
   )
 
@@ -693,6 +697,6 @@ elif selected_tab == "📥 Download / Arsip":
         )
   else:
     st.warning(
-        "⚠️ Belum ada file arsip ditemukan pada server direktori"
-        " `saved_reports/`."
+        "⚠️ Belum ada file arsip ditemukan pada direktori lokal"
+        f" `{OUTPUT_FOLDER}`."
     )
