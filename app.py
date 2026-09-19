@@ -41,17 +41,22 @@ def save_local(file_buffer, filename):
         return False, str(e)
 
 
+import pytz
+
+WIB = pytz.timezone('Asia/Jakarta')
+
 def list_local_archives():
-    """Return list of (label, file_id/path, filename), terbaru dulu."""
     try:
         pattern = os.path.join(LOCAL_ARCHIVE_DIR, "Tracking_Final_*.xlsx")
         files = glob.glob(pattern)
-        # Urutkan berdasarkan waktu modifikasi descending (terbaru dulu)
         files.sort(key=os.path.getmtime, reverse=True)
         result = []
         for f in files:
             fname = os.path.basename(f)
-            mtime = datetime.fromtimestamp(os.path.getmtime(f)).strftime('%Y-%m-%d %H:%M:%S')
+            # Konversi timestamp ke WIB (Jakarta)
+            utc_dt = datetime.fromtimestamp(os.path.getmtime(f), pytz.utc)
+            wib_dt = utc_dt.astimezone(WIB)
+            mtime = wib_dt.strftime('%Y-%m-%d %H:%M:%S WIB')
             result.append((f"{mtime} | {fname}", f, fname))
         return result
     except Exception as e:
@@ -223,6 +228,10 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
             Tipe_PO=('Tipe_PO', lambda x: ', '.join(pd.Series(x).dropna().astype(str).unique())),
         )
 
+    # Filter PR Qty == 0 atau NaN dianggap dibatalkan / skip
+    pr_data['PR_Qty_Num'] = pd.to_numeric(pr_data['PR_Qty'], errors='coerce').fillna(0)
+    pr_data = pr_data[pr_data['PR_Qty_Num'] > 0].copy()
+
     merged = pd.merge(pr_data, po_agg, on=['PR_Manual_No_Clean', 'Item_Code'], how='left')
     merged['PO_No'] = merged['PO_No'].fillna('')
     merged = merged[~((merged['PO_No'] == '') & (merged['RequestClosed'] == 'Yes'))]
@@ -268,32 +277,37 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
         return 'Sudah Diterima'
 
     merged['Status'] = merged.apply(get_status, axis=1)
-    merged['Qty_Outstanding'] = merged['PO_Qty'] - merged['Rcv_Qty']
 
-    # Pastikan kolom wajib ada walaupun kosong
-    for col in ['PO_No', 'Vendor', 'Tipe_PO', 'PO_Date', 'Rcv_Date']:
-        if col not in merged.columns:
-            merged[col] = '-'
-        else:
-            merged[col] = merged[col].fillna('-')
+    # Qty Outstanding rule: Routing approval = PR_Qty, selain itu PO_Qty - Rcv_Qty
+    def calc_outstanding(row):
+        if row['Status'] == 'Routing Approval':
+            return row['PR_Qty_Num']
+        return max(0, row['PO_Qty'] - row['Rcv_Qty'])
 
-    merged['PO_Qty'] = pd.to_numeric(merged['PO_Qty'], errors='coerce').fillna(0)
-    merged['Rcv_Qty'] = pd.to_numeric(merged['Rcv_Qty'], errors='coerce').fillna(0)
-    merged['Qty_Outstanding'] = merged['PO_Qty'] - merged['Rcv_Qty']
+    merged['Qty_Outstanding'] = merged.apply(calc_outstanding, axis=1)
 
     for col in ('PR_Date', 'PO_Date', 'Rcv_Date'):
         if col in merged.columns:
             dt_s = pd.to_datetime(merged[col], errors='coerce')
             merged[col] = dt_s.dt.strftime('%m/%d/%Y').fillna('-')
 
-    # Susun kolom secara eksplisit agar tidak bergeser/tertukar
+    for col in ['PO_No', 'Vendor', 'Tipe_PO']:
+        if col not in merged.columns:
+            merged[col] = '-'
+        else:
+            merged[col] = merged[col].fillna('-')
+
     cols_order = [
-        'PR_Date', 'PR_Manual_No', 'Item_Code', 'Item_Name', 'PR_Qty',
+        'PR_Date', 'PR_Manual_No', 'Item_Code', 'Item_Name', 'PR_Qty_Num',
         'PO_Date', 'PO_No', 'Vendor', 'Tipe_PO', 'PO_Qty',
         'Rcv_Date', 'Rcv_Qty', 'Qty_Outstanding', 'Status',
     ]
+    # rename PR_Qty_Num kembali ke PR_Qty jika mau konsisten
     valid_cols = [c for c in cols_order if c in merged.columns]
-    return merged[valid_cols]
+    res_df = merged[valid_cols].copy()
+    if 'PR_Qty_Num' in res_df.columns:
+        res_df.rename(columns={'PR_Qty_Num': 'PR_Qty'}, inplace=True)
+    return res_df
 
 
 def to_excel_bytes(df):
