@@ -41,9 +41,8 @@ def save_local(file_buffer, filename):
         return False, str(e)
 
 
-import pytz
-
-WIB = pytz.timezone('Asia/Jakarta')
+from zoneinfo import ZoneInfo
+WIB = ZoneInfo("Asia/Jakarta")
 
 def list_local_archives():
     try:
@@ -53,10 +52,8 @@ def list_local_archives():
         result = []
         for f in files:
             fname = os.path.basename(f)
-            # Konversi timestamp ke WIB (Jakarta)
-            utc_dt = datetime.fromtimestamp(os.path.getmtime(f), pytz.utc)
-            wib_dt = utc_dt.astimezone(WIB)
-            mtime = wib_dt.strftime('%Y-%m-%d %H:%M:%S WIB')
+            dt_wib = datetime.fromtimestamp(os.path.getmtime(f), WIB)
+            mtime = dt_wib.strftime('%Y-%m-%d %H:%M:%S WIB')
             result.append((f"{mtime} | {fname}", f, fname))
         return result
     except Exception as e:
