@@ -30,7 +30,16 @@ st.markdown("""
 
 GDRIVE_FOLDER_ID = "1Z9-pgpCBqJ3iEjUdU7URLJZSlnU_Hgyk"
 
-CREDS_DICT = dict(st.secrets["gcp_service_account"])
+import streamlit as st
+from google.oauth2 import service_account
+import gspread
+
+creds = service_account.Credentials.from_service_account_info(
+    st.secrets["gcp_service_account"],
+    scopes=["https://www.googleapis.com/auth/spreadsheets"],
+)
+gc = gspread.authorize(creds)
+sheet = gc.open("Nama Sheet Kamu").sheet1
 
 import base64
 
