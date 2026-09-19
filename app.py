@@ -399,7 +399,7 @@ elif selected_tab == "📥 Download / Arsip Lokal":
         labels = [a[0] for a in archives]
         selected_lbl = st.selectbox("Select Archived Document:", labels)
         idx = labels.index(selected_lbl)
-        filepath, sel_name = archives[idx], archives[idx]
+        _, filepath, sel_name = archives[idx]
 
         buf = download_from_local(filepath)
         if buf:
