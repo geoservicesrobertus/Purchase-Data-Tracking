@@ -3,11 +3,8 @@ import pandas as pd
 import re
 import io
 import os
-import base64
+import glob
 from datetime import datetime
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
-from google.oauth2 import service_account
 import plotly.express as px
 
 st.set_page_config(
@@ -27,89 +24,55 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-GDRIVE_FOLDER_ID = "1Z9-pgpCBqJ3iEjUdU7URLJZSlnU_Hgyk"
-DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
+LOCAL_ARCHIVE_DIR = "archive_data"
+os.makedirs(LOCAL_ARCHIVE_DIR, exist_ok=True)
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
-# ---------------------------------------------------------------- Google Drive
+# ---------------------------------------------------------------- Local Storage Helpers
 
-@st.cache_resource
-def get_gdrive_service():
-    """Bangun Drive client sekali saja, lalu dipakai ulang."""
-    creds_dict = dict(st.secrets["gcp_service_account"])
-
-    # Kalau private_key tersimpan dengan \n literal, ubah jadi newline asli.
-    pk = str(creds_dict.get("private_key", "")).strip()
-    if "\\n" in pk:
-        pk = pk.replace("\\n", "\n")
-    creds_dict["private_key"] = pk
-
-    creds = service_account.Credentials.from_service_account_info(
-        creds_dict, scopes=DRIVE_SCOPES
-    )
-    return build("drive", "v3", credentials=creds, cache_discovery=False)
-
-
-def upload_to_gdrive(file_buffer, filename):
+def save_local(file_buffer, filename):
     try:
-        service = get_gdrive_service()
-        media = MediaIoBaseUpload(file_buffer, mimetype=XLSX_MIME, resumable=True)
-        file = service.files().create(
-            body={"name": filename, "parents": [GDRIVE_FOLDER_ID]},
-            media_body=media,
-            fields="id",
-            supportsAllDrives=True,
-        ).execute()
-        return True, file.get("id")
+        filepath = os.path.join(LOCAL_ARCHIVE_DIR, filename)
+        with open(filepath, "wb") as f:
+            f.write(file_buffer.getbuffer())
+        return True, filepath
     except Exception as e:
         return False, str(e)
 
 
-def list_gdrive_archives():
-    """Return list of (label, file_id, filename), terbaru dulu."""
+def list_local_archives():
+    """Return list of (label, file_id/path, filename), terbaru dulu."""
     try:
-        service = get_gdrive_service()
-        query = (
-            f"'{GDRIVE_FOLDER_ID}' in parents and trashed=false "
-            "and name contains 'Tracking_Final_'"
-        )
-        results = service.files().list(
-            q=query,
-            pageSize=50,
-            fields="files(id, name, createdTime)",
-            orderBy="createdTime desc",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-        ).execute()
-        files = results.get("files", [])
-        return [
-            (f"{f['createdTime'][:19].replace('T', ' ')} | {f['name']}", f["id"], f["name"])
-            for f in files
-        ]
+        pattern = os.path.join(LOCAL_ARCHIVE_DIR, "Tracking_Final_*.xlsx")
+        files = glob.glob(pattern)
+        # Urutkan berdasarkan waktu modifikasi descending (terbaru dulu)
+        files.sort(key=os.path.getmtime, reverse=True)
+        result = []
+        for f in files:
+            fname = os.path.basename(f)
+            mtime = datetime.fromtimestamp(os.path.getmtime(f)).strftime('%Y-%m-%d %H:%M:%S')
+            result.append((f"{mtime} | {fname}", f, fname))
+        return result
     except Exception as e:
-        st.warning(f"Gagal membaca folder GDrive: {e}")
+        st.warning(f"Gagal membaca folder arsip lokal: {e}")
         return []
 
 
-def download_from_gdrive(file_id):
+def download_from_local(filepath):
     try:
-        service = get_gdrive_service()
-        request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
-        fh.seek(0)
-        return fh
+        if os.path.exists(filepath):
+            with open(filepath, "rb") as f:
+                return io.BytesIO(f.read())
+        return None
     except Exception as e:
-        st.warning(f"Gagal mengunduh file: {e}")
+        st.warning(f"Gagal membaca file lokal: {e}")
         return None
 
 
 def get_base64_image(image_path):
     if os.path.exists(image_path):
+        import base64
         with open(image_path, "rb") as f:
             return base64.b64encode(f.read()).decode("utf-8")
     return None
@@ -118,10 +81,10 @@ def get_base64_image(image_path):
 # ---------------------------------------------------------------- Bootstrap
 
 if "df_final" not in st.session_state:
-    archives = list_gdrive_archives()
+    archives = list_local_archives()
     if archives:
-        label, file_id, fname = archives[0]
-        buf = download_from_gdrive(file_id)
+        _, filepath, fname = archives[0]
+        buf = download_from_local(filepath)
         if buf:
             st.session_state["df_final"] = pd.read_excel(buf)
             st.session_state["last_saved"] = fname
@@ -132,7 +95,7 @@ if "df_final" not in st.session_state:
 c_left, c_right = st.columns(2)
 logo_b64 = get_base64_image("Logo_PT_Geoservices_4K_Transparent.jpg")
 with c_left:
-    c_img, c_txt = st.columns([1, 6])
+    c_img, c_txt = st.columns()
     with c_img:
         if logo_b64:
             st.markdown(
@@ -164,7 +127,6 @@ st.write("")
 
 @st.cache_data(show_spinner=False)
 def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
-    # Uploader bisa dibaca ulang pada rerun, jadi pointer-nya dikembalikan ke awal.
     for f in (pr_new, pr_old, po_lok, po_imp, inb):
         f.seek(0)
 
@@ -181,7 +143,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     ]
 
     pr_2426_df = pd.read_excel(pr_old, sheet_name=0, header=None)
-    closed_info = pr_2426_df.iloc[7:, [2, 6, 7]].copy()
+    closed_info = pr_2426_df.iloc].copy()
     closed_info.columns = ['PR_Manual_No', 'RequestClosed', 'Item_Code']
     closed_info['Item_Code'] = closed_info['Item_Code'].astype(str).str.strip()
     closed_info['PR_Manual_No_Clean'] = closed_info['PR_Manual_No'].astype(str).str.replace(" ", "")
@@ -326,7 +288,7 @@ def to_excel_bytes(df):
 
 selected_tab = st.radio(
     "Navigation",
-    ["📊 Dashboard", "⚙️ Proses Data", "📥 Download / Arsip"],
+    ["📊 Dashboard", "⚙️ Proses Data", "📥 Download / Arsip Lokal"],
     horizontal=True,
     label_visibility="collapsed",
 )
@@ -337,7 +299,7 @@ if selected_tab == "📊 Dashboard":
     if 'df_final' in st.session_state:
         df_final = st.session_state['df_final']
         if 'last_saved' in st.session_state:
-            st.caption(f"📁 Active Dataset (GDrive): `{st.session_state['last_saved']}`")
+            st.caption(f"📁 Active Dataset (Lokal): `archive_data/{st.session_state['last_saved']}`")
 
         c1, c2, c3, c4 = st.columns(4)
         sc = df_final['Status'].value_counts()
@@ -377,7 +339,7 @@ elif selected_tab == "⚙️ Proses Data":
         po_i = st.file_uploader("PO Data - Impor", type=['xlsx'])
         in_b = st.file_uploader("Inbound Data", type=['xlsx'])
 
-    if st.button("🚀 Proses & Sync GDrive", type="primary"):
+    if st.button("🚀 Proses & Simpan Lokal", type="primary"):
         if all([pr_b, pr_c, po_l, po_i, in_b]):
             with st.spinner("Memproses..."):
                 try:
@@ -386,23 +348,16 @@ elif selected_tab == "⚙️ Proses Data":
                     st.error(f"Gagal memproses data: {e}")
                     st.stop()
 
-                buf = to_excel_bytes(df_out)
-                fname = f"Tracking_Final_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-                ok, res = upload_to_gdrive(buf, fname)
+            buf = to_excel_bytes(df_out)
+            fname = f"Tracking_Final_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            ok, res = save_local(buf, fname)
 
-                st.session_state['df_final'] = df_out
-                if ok:
-                    st.session_state['last_saved'] = fname
-                    st.success("Tersimpan permanen di GDrive!")
-                else:
-                    st.error(f"Gagal upload ke GDrive: {res}")
-                    st.info("Data tetap tersimpan di sesi ini. Silakan unduh manual di bawah.")
-                    st.download_button(
-                        "📥 Download hasil (.xlsx)",
-                        to_excel_bytes(df_out).getvalue(),
-                        fname,
-                        mime=XLSX_MIME,
-                    )
+            st.session_state['df_final'] = df_out
+            if ok:
+                st.session_state['last_saved'] = fname
+                st.success(f"Tersimpan permanen di folder `archive_data/{fname}`!")
+            else:
+                st.error(f"Gagal simpan lokal: {res}")
         else:
             st.error("Upload 5 file lengkap dulu.")
 
@@ -437,20 +392,20 @@ elif selected_tab == "⚙️ Proses Data":
                     mime=XLSX_MIME,
                 )
 
-elif selected_tab == "📥 Download / Arsip":
-    st.subheader("Cloud Repository (GDrive)")
-    archives = list_gdrive_archives()
+elif selected_tab == "📥 Download / Arsip Lokal":
+    st.subheader("Local Repository (`archive_data/`)")
+    archives = list_local_archives()
     if archives:
         labels = [a[0] for a in archives]
-        selected_lbl = st.selectbox("Select Cloud Archived Document:", labels)
+        selected_lbl = st.selectbox("Select Archived Document:", labels)
         idx = labels.index(selected_lbl)
-        sel_id, sel_name = archives[idx][1], archives[idx][2]
+        filepath, sel_name = archives[idx], archives[idx]
 
-        buf = download_from_gdrive(sel_id)
+        buf = download_from_local(filepath)
         if buf:
             df_prev = pd.read_excel(buf)
             st.dataframe(df_prev.head(50), use_container_width=True)
             buf.seek(0)
             st.download_button("📥 Download File Ini", buf.getvalue(), sel_name, mime=XLSX_MIME)
     else:
-        st.warning("Belum ada arsip di GDrive.")
+        st.warning("Belum ada arsip di folder `archive_data`.")
