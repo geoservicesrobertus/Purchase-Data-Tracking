@@ -30,46 +30,7 @@ st.markdown("""
 
 GDRIVE_FOLDER_ID = "1Z9-pgpCBqJ3iEjUdU7URLJZSlnU_Hgyk"
 
-CREDS_DICT = {
-  "type": "service_account",
-  "project_id": "purchase-data-tracking",
-  "private_key_id": "1b9b383c0665eb93d863f9b786c561c82063fe13",
-  "private_key": """-----BEGIN PRIVATE KEY-----
-MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDU/wp2SztkqhXW
-dm0AD+jTvXCm4D3ZAYW9v6KHBXWS15naqFI1bww3LnF07VVeOnkKlFIqVqFcR5qN
-+zsxBsDgrm3t3PFMKCMrDpDk3hfS3Hw3cPn8APnYs/EMtWRNJr+Ky9ZcqOT1De4H
-PlvCG0bIGqWG3tIqx8DsYcSGw9f0ruRUaXrvUF9YbKOPr9uEgTszkr60iZtFA5Bu
-2VOqBseMuQDswbqh4ZSqRDaLvjux91ijKYhHPVuEpUCB3LaiHPZEs/5YM2EF8SyD
-GW6lyA5HTwZYBwQ6ScrtJj5cyGYKKbIs3g2oIXvo2oc/YIxQjSKr3/MB02KCN4M9
-1MwjvbDbAgMBAAECggEAHyqAZ+XDN4wRrPNgKKmrSkxGbwyR0C6CWMzxJaudVBK7
-Hv0RJmNs2KgxjsfpfWO18V/Zk/tgGgYaLdtMgnR4BYhQaoUxQ5D98F9twSdkOgTs
-IhqkYYTtChHuXAswtX9NeKwx3hYShm723NV5jLH8DeykOtNg0kSvTIdTv9ppP5KR
-Lev4Th5Nhoj20g+1dc6GGZlGSFDjmENwVM96FRswfWMPttOi7/Q3GADv07Ts8QWk
-Gx6tO9c+MgJWXOGbvC6XBWke8tpDI9BEvUTheFs2cE8557FFvmDCjN3WFrFVSf5w
-u74t1rN2OFed8icyx50zI1zVdT/H2jpWHip3GIx75QKBgQD7V/A6Q6MiFyNMfofP
-U2Ky0c33ZkAzYhFWH2XB0eKaRt/xK2EXNGdkghCSISuOzwL+HDst9OQPF7mEmJjD
-uwMcBd7NLI16RwA36I9H5HecVAUIDdpS0nk711swSGeRmJ4IPBTs38otjIJ17A8m
-1FU8DIre+m+UCEBZp1VJT+2X9QKBgQDY8TsO/LxfOtb3LL7unMi8FqnHYiurQ0b/
-erebYsduzySzmq+SLgD5aUx8vg66IQwAs63cCVKp5PHPjbMKYylN0z6hkvtr+DTQ
-oUbzlg/i+uSYwRK/DnM+1X/M8N/0wAnjoBzzbfREPCBfVkAqgXbzJB5KLeEB5+Fz
-EXT/zcAzjwKBgQD2K38B0dUpQng0J4lkqkr00UBlmyQuL1LDgyTq3GKQr/IOB2qk
-i5Logesw9IPw7xgDQitEK6Jild4B3GNi8PtuquE5GvXGWVwBZilPRJlR54i2Brta
-ewJ6dca+V2v40f2WGyJzjgw66G+uh3Gfmj+Q/MfW9HnsBtjf9mA12a7fMQKBgQC6
-0AhOYJ8J1k5UrSiBq2tEZLOw6T23jgiuaYuAeDBKoH/3VaYI2Cqom99sr/FYoKqI
-VDHMAA86E9eTJm9d64Qe62DMnBh7olJAshC6I6fsiqadT+2HrrbZDdqurWH9jf02
-EaO8kBu/QpOR5WD9+VxoBds7f4R6Mqa2gvrgaNowywKBgQCinsuBMjoq8DZ5f7eO
-VpUWBPMr25XiaDUDx5ru/UP95GqSyB36YLLufC1CyJlriAPJqK93dmv/2pVADHTz
-vpeIl8gKZKsKXOC7llzcv0gF7k9LG6VDr4tjuSuULIDlm5aes2qYvVzx1atVLqxj
-eLz0JSdLNyxaBkVYgARpioi21A==
------END PRIVATE KEY-----""",
-  "client_email": "robertus-yuseno@purchase-data-tracking.iam.gserviceaccount.com",
-  "client_id": "109589672772004723099",
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-  "token_uri": "https://oauth2.googleapis.com/token",
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/robertus-yuseno%40purchase-data-tracking.iam.gserviceaccount.com",
-  "universe_domain": "googleapis.com"
-}
+CREDS_DICT = dict(st.secrets["gcp_service_account"])
 
 def get_gdrive_service():
     creds = service_account.Credentials.from_service_account_info(
