@@ -278,7 +278,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     merged['Qty_Outstanding'] = merged['PO_Qty'] - merged['Rcv_Qty']
 
     for col in ('PR_Date', 'PO_Date', 'Rcv_Date'):
-        merged[col] = pd.to_datetime(merged[col], errors='coerce').dt.strftime('%d/%m/%Y')
+        merged[col] = pd.to_datetime(merged[col], errors='coerce').dt.strftime('%m/%d/%Y')
         merged[col] = merged[col].fillna('-')
 
     merged['Vendor'] = merged['Vendor'].fillna('-')
