@@ -169,9 +169,13 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
         po['Tipe_PO'] = tipe
         return po
 
+    # 1. Clean PO seperti biasa
     po_df = pd.concat([clean_po(po_lok, "Lokal"), clean_po(po_imp, "Impor")], ignore_index=True)
     po_df['Item_Code'] = po_df['Item_Code'].astype(str).str.strip()
+    po_df['PO_Date_DT'] = pd.to_datetime(po_df['PO_Date'], errors='coerce')
+    po_df['PO_Qty_Num'] = pd.to_numeric(po_df['PO_Qty'], errors='coerce').fillna(0)
 
+    # 2. Expand PR Manual No jika koma/slash jadi multi-row detail per PO
     expanded_rows = []
     for _, row in po_df.iterrows():
         pr_str = str(row['PR_Manual_No_Orig']).strip()
@@ -204,15 +208,27 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
             columns=['PR_Manual_No_Clean', 'Item_Code', 'PO_No', 'PO_Date', 'PO_Qty', 'Vendor', 'Tipe_PO']
         )
     else:
-        po_exp['PO_Date'] = pd.to_datetime(po_exp['PO_Date'], errors='coerce')
-        po_exp['PO_Qty'] = pd.to_numeric(po_exp['PO_Qty'], errors='coerce').fillna(0)
-        po_agg = po_exp.groupby(['PR_Manual_No_Clean', 'Item_Code']).agg(
-            PO_No=('PO_No', lambda x: ', '.join(pd.Series(x).dropna().astype(str).unique())),
+        po_exp['PO_Date_DT'] = pd.to_datetime(po_exp['PO_Date'], errors='coerce')
+        po_exp['PO_Qty_Num'] = pd.to_numeric(po_exp['PO_Qty'], errors='coerce').fillna(0)
+        
+        # Urutkan berdasarkan tanggal terbaru biar dedup ambil yang paling akhir
+        po_exp = po_exp.sort_values(by='PO_Date_DT', ascending=True)
+        
+        # Buang jika ada duplikat murni (PR_Manual_No_Clean + Item_Code + PO_Qty_Num sama, tapi keep='last' / terbaru)
+        # Atau jika maksudnya "kalau ada 2 PO kembar identik qty sama untuk PR/Item yang sama, ambil yang terbaru":
+        po_exp = po_exp.drop_duplicates(
+            subset=['PR_Manual_No_Clean', 'Item_Code', 'PO_Qty_Num'], 
+            keep='last'
+        )
+
+        # Kelompokkan per unit PO line (tidak di-merge jadi string koma sembarangan kalau beda PO_No, 
+        # tapi tetap per unique PO_No/Item/PR)
+        po_agg = po_exp.groupby(['PR_Manual_No_Clean', 'Item_Code', 'PO_No'], as_index=False).agg(
             PO_Date=('PO_Date', 'max'),
-            PO_Qty=('PO_Qty', 'sum'),
+            PO_Qty=('PO_Qty_Num', 'sum'),
             Vendor=('Vendor', lambda x: ', '.join(pd.Series(x).dropna().astype(str).unique())),
             Tipe_PO=('Tipe_PO', lambda x: ', '.join(pd.Series(x).dropna().astype(str).unique())),
-        ).reset_index()
+        )
 
     merged = pd.merge(pr_data, po_agg, on=['PR_Manual_No_Clean', 'Item_Code'], how='left')
     merged['PO_No'] = merged['PO_No'].fillna('')
