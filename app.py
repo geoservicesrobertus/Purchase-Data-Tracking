@@ -30,9 +30,9 @@ st.markdown("""
 
 GDRIVE_FOLDER_ID = "1Z9-pgpCBqJ3iEjUdU7URLJZSlnU_Hgyk"
 
-import streamlit as st
+
 from google.oauth2 import service_account
-import gspread
+
 
 creds = service_account.Credentials.from_service_account_info(
     st.secrets["gcp_service_account"],
