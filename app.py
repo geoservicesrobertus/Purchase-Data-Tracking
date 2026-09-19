@@ -247,19 +247,64 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
         Rcv_Date=('ReceivedDate', 'max'), Rcv_Qty=('RcvQty', 'sum')
     ).reset_index()
 
-    def get_inb(po_str, item_code):
-        empty = pd.Series({'Rcv_Date': pd.NaT, 'Rcv_Qty': 0})
-        if not po_str:
-            return empty
-        po_list = [p.strip() for p in str(po_str).split(',') if p.strip()]
-        subset = inb_agg[inb_agg['POnumber'].isin(po_list) & (inb_agg['ItemCode'] == item_code)]
-        if subset.empty:
-            return empty
-        return pd.Series({'Rcv_Date': subset['Rcv_Date'].max(), 'Rcv_Qty': subset['Rcv_Qty'].sum()})
+   def get_inb(row):
+    empty_res = pd.Series({
+        'Rcv_Date': pd.NaT, 
+        'Rcv_Qty': 0.0, 
+        'Inb_Match_Note': 'Belum Diterima / Tidak Ketemu'
+    })
+    item_code = str(row['Item_Code']).strip().upper()
+    if not item_code or item_code == '-':
+        return pd.Series({'Rcv_Date': pd.NaT, 'Rcv_Qty': 0.0, 'Inb_Match_Note': '-'})
 
-    merged[['Rcv_Date', 'Rcv_Qty']] = merged.apply(
-        lambda row: get_inb(row['PO_No'], row['Item_Code']), axis=1
-    )
+    po_str = str(row['PO_No']).strip() if pd.notna(row['PO_No']) else ''
+    subset = pd.DataFrame()
+    match_type = 'No PO'
+
+    if po_str and po_str != '-':
+        po_list = [p.strip().upper() for p in po_str.split(',') if p.strip()]
+        
+        # A. Coba exact/strict match PO + Item
+        sub_strict = inb_agg[inb_agg['POnumber'].isin(po_list) & (inb_agg['ItemCode'] == item_code)]
+        if not sub_strict.empty:
+            subset = sub_strict
+            match_type = 'Exact Match (PO & Item)'
+        else:
+            # B. Fallback toleransi beda suffix ekor PO (misal PO 05 vs 06), tapi ItemCode sama
+            core_pos = [p[:12] for p in po_list if len(p) >= 12]
+            sub_item = inb_agg[inb_agg['ItemCode'] == item_code]
+            if not sub_item.empty and core_pos:
+                sub_flex = sub_item[sub_item['POnumber'].apply(lambda x: any(c in str(x).upper() for c in core_pos))]
+                if not sub_flex.empty:
+                    subset = sub_flex
+                    found_po_vals = subset['POnumber'].unique()
+                    match_type = f'Flexible Match (Sufiks PO beda: input {po_list[0]} vs wms {list(found_po_vals)})'
+    
+    if subset.empty:
+        # Cek apakah item code ini ada di inbound tapi beda PO sama sekali? (buat note nego admin)
+        sub_any_item = inb_agg[inb_agg['ItemCode'] == item_code]
+        if not sub_any_item.empty:
+            found_pos = ", ".join(sub_any_item['POnumber'].unique())
+            return pd.Series({
+                'Rcv_Date': sub_any_item['ReceivedDate'].max(),
+                'Rcv_Qty': sub_any_item['RcvQty'].sum(),
+                'Inb_Match_Note': f'⚠️ MISMATCH PO: PO sistem ({po_str}) beda dg WMS ter-receive di PO lain [{found_pos}]'
+            })
+        return empty_res
+
+    rcv_date_val = subset['ReceivedDate'].max() if 'ReceivedDate' in subset else pd.NaT
+    rcv_qty_val = subset['RcvQty'].sum() if 'RcvQty' in subset else 0.0
+    
+    note = 'OK' if match_type.startswith('Exact') else f'ℹ️ {match_type}'
+    
+    return pd.Series({
+        'Rcv_Date': rcv_date_val,
+        'Rcv_Qty': rcv_qty_val,
+        'Inb_Match_Note': note
+    })
+
+    inb_res = merged.apply(get_inb, axis=1)
+    merged[['Rcv_Date', 'Rcv_Qty', 'Inb_Match_Note']] = inb_res
 
     merged['PO_Qty'] = pd.to_numeric(merged['PO_Qty'], errors='coerce').fillna(0)
     merged['Rcv_Qty'] = pd.to_numeric(merged['Rcv_Qty'], errors='coerce').fillna(0)
@@ -295,9 +340,9 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
             merged[col] = merged[col].fillna('-')
 
     cols_order = [
-        'PR_Date', 'PR_Manual_No', 'Item_Code', 'Item_Name', 'PR_Qty_Num',
+        'PR_Date', 'PR_Manual_No', 'Item_Code', 'Item_Name', 'PR_Qty',
         'PO_Date', 'PO_No', 'Vendor', 'Tipe_PO', 'PO_Qty',
-        'Rcv_Date', 'Rcv_Qty', 'Qty_Outstanding', 'Status',
+        'Rcv_Date', 'Rcv_Qty', 'Qty_Outstanding', 'Status', 'Inb_Match_Note'
     ]
     # rename PR_Qty_Num kembali ke PR_Qty jika mau konsisten
     valid_cols = [c for c in cols_order if c in merged.columns]
