@@ -5,11 +5,13 @@ import re
 import io
 import os
 import base64
-import plotly.express as px
 from datetime import datetime
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
+from google.oauth2 import service_account
 
 # ==========================================
-# 0. CONFIG & ENTERPRISE THEME SETUP
+# 0. CONFIG & SETUP
 # ==========================================
 st.set_page_config(
     page_title="Purchase Data Tracking - PT. Geoservices",
@@ -22,82 +24,107 @@ st.markdown("""
     <style>
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
-        
         .main-title {font-size: 1.5rem; font-weight: 700; color: #1e3d59; margin: 0;}
         .sub-meta {font-size: 0.8rem; color: #5f6c7b;}
-        
-        .erp-panel {
-            background: #ffffff;
-            border: 1px solid #c0c0c0;
-            border-radius: 3px;
-            padding: 15px;
-            margin-bottom: 15px;
-        }
+        .erp-panel {background: #ffffff; border: 1px solid #c0c0c0; border-radius: 3px; padding: 15px; margin-bottom: 15px;}
     </style>
 """, unsafe_allow_html=True)
 
-OUTPUT_FOLDER = "saved_reports"
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+GDRIVE_FOLDER_ID = "1Z9-pgpCBqJ3iEjUdU7URLJZSlnU_Hgyk"
 
-# Helper: Load local logo as base64 for guaranteed rendering
+CREDS_DICT = {
+  "type": "service_account",
+  "project_id": "purchase-data-tracking",
+  "private_key_id": "1b9b383c0665eb93d863f9b786c561c82063fe13",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDU/wp2SztkqhXW\ndm0AD+jTvXCm4D3ZAYW9v6KHBXWS15naqFI1bww3LnF07VVeOnkKlFIqVqFcR5qN\n+zsxBsDgrm3t3PFMKCMrDpDk3hfS3Hw3cPn8APnYs/EMtWRNJr+Ky9ZcqOT1De4H\nPlvCG0bIGqWG3tIqx8DsYcSGw9f0ruRUaXrvUF9YbKOPr9uEgTszkr60iZtFA5Bu\n2VOqBseMuQDswbqh4ZSqRDaLvjux91ijKYhHPVuEpUCB3LaiHPZEs/5YM2EF8SyD\nGW6lyA5HTwZYBwQ6ScrtJj5cyGYKKbIs3g2oIXvo2oc/YIxQjSKr3/MB02KCN4M9\n1MwjvbDbAgMBAAECggEAHyqAZ+XDN4wRrPNgKKmrSkxGbwyR0C6CWMzxJaudVBK7\nHv0RJmNs2KgxjsfpfWO18V/Zk/tgGgYaLdtMgnR4BYhQaoUxQ5D98F9twSdkOgTs\nIhqkYYTtChHuXAswtX9NeKwx3hYShm723NV5jLH8DeykOtNg0kSvTIdTv9ppP5KR\nLev4Th5Nhoj20g+1dc6GGZlGSFDjmENwVM96FRswfWMPttOi7/Q3GADv07Ts8QWk\nGx6tO9c+MgJWXOGbvC6XBWke8tpDI9BEvUTheFs2cE8557FFvmDCjN3WFrFVSf5w\nu74t1rN2OFed8icyx50zI1zVdT/H2jpWHip3GIx75QKBgQD7V/A6Q6MiFyNMfofP\nU2Ky0c33ZkAzYhFWH2XB0eKaRt/xK2EXNGdkghCSISuOzwL+HDst9OQPF7mEmJjD\nuwMcBd7NLI16RwA36I9H5HecVAUIDdpS0nk711swSGeRmJ4IPBTs38otjIJ17A8m\n1FU8DIre+m+UCEBZp1VJT+2X9QKBgQDY8TsO/LxfOtb3LL7unMi8FqnHYiurQ0b/\nerebYsduzySzmq+SLgD5aUx8vg66IQwAs63cCVKp5PHPjbMKYylN0z6hkvtr+DTQ\noUbzlg/i+uSYwRK/DnM+1X/M8N/0wAnjoBzzbfREPCBfVkAqgXbzJB5KLeEB5+Fz\nEXT/zcAzjwKBgQD2K38B0dUpQng0J4lkqkr00UBlmyQuL1LDgyTq3GKQr/IOB2qk\ni5Logesw9IPw7xgDQitEK6Jild4B3GNi8PtuquE5GvXGWVwBZilPRJlR54i2Brta\newJ6dca+V2v40f2WGyJzjgw66G+uh3Gfmj+Q/MfW9HnsBtjf9mA12a7fMQKBgQC6\n0AhOYJ8J1k5UrSiBq2tEZLOw6T23jgiuaYuAeDBKoH/3VaYI2Cqom99sr/FYoKqI\nVDHMAA86E9eTJm9d64Qe62DMnBh7olJAshC6I6fsiqadT+2HrrbZDdqurWH9jf02\nEaO8kBu/QpOR5WD9+VxoBds7f4R6Mqa2gvrgaNowywKBgQCinsuBMjoq8DZ5f7eO\nVpUWBPMr25XiaDUDx5ru/UP95GqSyB36YLLufC1CyJlriAPJqK93dmv/2pVADHTz\nvpeIl8gKZKsKXOC7llzcv0gF7k9LG6VDr4tjuSuULIDlm5aes2qYvVzx1atVLqxj\neLz0JSdLNyxaBkVYgARpioi21A==\n-----END PRIVATE KEY-----\n",
+  "client_email": "robertus-yuseno@purchase-data-tracking.iam.gserviceaccount.com",
+  "client_id": "109589672772004723099",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/robertus-yuseno%40purchase-data-tracking.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
+
+def get_gdrive_service():
+    creds = service_account.Credentials.from_service_account_info(CREDS_DICT, scopes=['https://www.googleapis.com/auth/drive'])
+    return build('drive', 'v3', credentials=creds)
+
+def upload_to_gdrive(file_buffer, filename):
+    try:
+        service = get_gdrive_service()
+        media = MediaIoBaseUpload(file_buffer, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', resumable=True)
+        file = service.files().create(body={'name': filename, 'parents': [GDRIVE_FOLDER_ID]}, media_body=media, fields='id').execute()
+        return True, file.get('id')
+    except Exception as e:
+        return False, str(e)
+
+def list_gdrive_archives():
+    try:
+        service = get_gdrive_service()
+        query = f"'{GDRIVE_FOLDER_ID}' in parents and trashed=false and name contains 'Tracking_Final_'"
+        results = service.files().list(q=query, pageSize=50, fields="files(id, name, createdTime)", orderBy="createdTime desc").execute()
+        files = results.get('files', [])
+        return [(f['createdTime'][:19].replace('T', ' ') + ' | ' + f['name'], f['id'], f['name']) for f in files]
+    except Exception:
+        return []
+
+def download_from_gdrive(file_id):
+    try:
+        service = get_gdrive_service()
+        request = service.files().get_media(fileId=file_id)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while done is False:
+            status, done = downloader.next_chunk()
+        fh.seek(0)
+        return fh
+    except Exception:
+        return None
+
 def get_base64_image(image_path):
     if os.path.exists(image_path):
-        with open(image_path, "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode('utf-8')
+        with open(image_path, "rb") as f:
+            return base64.b64encode(f.read()).decode('utf-8')
     return None
 
 # ==========================================
-# AUTO-LOAD LATEST REPORT ON STARTUP (NON-EMPTY)
+# AUTO LOAD LATEST FROM GDRIVE
 # ==========================================
-def get_latest_archive_filepath():
-    files = [f for f in os.listdir(OUTPUT_FOLDER) if f.endswith('.xlsx')]
-    if files:
-        files.sort(key=lambda x: os.path.getmtime(os.path.join(OUTPUT_FOLDER, x)), reverse=True)
-        return os.path.join(OUTPUT_FOLDER, files[0]), files[0]
-    return None, None
-
-def auto_load_latest_dashboard():
-    if 'df_final' not in st.session_state:
-        latest_path, latest_name = get_latest_archive_filepath()
-        if latest_path:
-            try:
-                st.session_state['df_final'] = pd.read_excel(latest_path)
-                st.session_state['last_saved'] = latest_name
-            except Exception:
-                pass
-
-auto_load_latest_dashboard()
+if 'df_final' not in st.session_state:
+    archives = list_gdrive_archives()
+    if archives:
+        latest_id = archives[0]
+        latest_name = archives[0]
+        buf = download_from_gdrive(latest_id)
+        if buf:
+            st.session_state['df_final'] = pd.read_excel(buf)
+            st.session_state['last_saved'] = latest_name
 
 # ==========================================
-# CLEAN CORPORATE HEADER WITH BASE64 LOGO
+# HEADER
 # ==========================================
-c_left, c_right = st.columns([3, 1])
-logo_base64 = get_base64_image("Logo_PT_Geoservices_4K_Transparent.jpg")
-
+c_left, c_right = st.columns()
+logo_b64 = get_base64_image("Logo_PT_Geoservices_4K_Transparent.jpg")
 with c_left:
-    c_img, c_txt = st.columns([1, 6])
+    c_img, c_txt = st.columns()
     with c_img:
-        if logo_base64:
-            st.markdown(f'<img src="data:image/jpeg;base64,{logo_base64}" style="width: 48px; border-radius: 4px; border: 1px solid #ccc;">', unsafe_allow_html=True)
+        if logo_b64:
+            st.markdown(f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 48px; border-radius: 4px; border: 1px solid #ccc;">', unsafe_allow_html=True)
         else:
-            st.markdown("🏢", unsafe_allow_html=True)
+            st.markdown("🏢")
     with c_txt:
         st.markdown('<div class="main-title">Purchase Data Tracking</div>', unsafe_allow_html=True)
         st.markdown('<div class="sub-meta">PT. Geoservices — Warehouse & Procurement Analytics</div>', unsafe_allow_html=True)
-
 with c_right:
     today_str = datetime.now().strftime("%A, %d %b %Y | %H:%M WIB")
-    st.markdown(f"""
-        <div style='text-align: right; background: #f8f9fa; padding: 8px 12px; border: 1px solid #e9ecef; border-radius: 4px; font-size: 0.78rem; color: #333;'>
-            <b>Business Unit:</b> PT. Geoservices (7001)<br>
-            <span style='color: #666;'>📅 {today_str}</span>
-        </div>
-    """, unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align: right; background: #f8f9fa; padding: 8px 12px; border: 1px solid #e9ecef; border-radius: 4px; font-size: 0.78rem;'><b>Business Unit:</b> PT. Geoservices (7001)<br>📅 {today_str}</div>", unsafe_allow_html=True)
 
 st.write("")
 
 # ==========================================
-# CORE PROCESSING ENGINE
+# CORE ENGINE
 # ==========================================
 @st.cache_data
 def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
@@ -110,12 +137,11 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     pr_data = pr_data[pr_data['PR_Manual_No'].notna() & (pr_data['PR_Manual_No'] != '') & (pr_data['PR_Manual_No'].astype(str) != 'nan')]
 
     pr_2426_df = pd.read_excel(pr_old, sheet_name=0, header=None)
-    closed_info = pr_2426_df.iloc[7:, [2, 6, 7]].copy()
+    closed_info = pr_2426_df.iloc].copy()
     closed_info.columns = ['PR_Manual_No', 'RequestClosed', 'Item_Code']
     closed_info['Item_Code'] = closed_info['Item_Code'].astype(str).str.strip()
     closed_info['PR_Manual_No_Clean'] = closed_info['PR_Manual_No'].astype(str).str.replace(" ", "")
     closed_info = closed_info.drop_duplicates(subset=['PR_Manual_No_Clean', 'Item_Code'], keep='last')
-    
     pr_data = pd.merge(pr_data, closed_info[['PR_Manual_No_Clean', 'Item_Code', 'RequestClosed']], on=['PR_Manual_No_Clean', 'Item_Code'], how='left')
     pr_data['RequestClosed'] = pr_data['RequestClosed'].fillna('No')
 
@@ -143,8 +169,8 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
             base_prefix = ""
             for p in [x.strip() for x in parts if x.strip()]:
                 if not p.isdigit():
-                    match = re.match(r'([A-Za-z.\-]+)(\d+)', p)
-                    if match: base_prefix = match.group(1)
+                    m = re.match(r'([A-Za-z.\-]+)(\d+)', p)
+                    if m: base_prefix = m.group(1)
                 new_row = row.to_dict()
                 new_row['PR_Manual_No_Clean'] = (base_prefix + p).replace(" ", "") if p.isdigit() and base_prefix else p.replace(" ", "")
                 expanded_rows.append(new_row)
@@ -156,7 +182,6 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     po_exp = pd.DataFrame(expanded_rows)
     po_exp['PO_Date'] = pd.to_datetime(po_exp['PO_Date'], errors='coerce')
     po_exp['PO_Qty'] = pd.to_numeric(po_exp['PO_Qty'], errors='coerce').fillna(0)
-    
     po_agg = po_exp.groupby(['PR_Manual_No_Clean', 'Item_Code']).agg(
         PO_No=('PO_No', lambda x: ', '.join(x.dropna().unique().astype(str))),
         PO_Date=('PO_Date', 'max'),
@@ -177,10 +202,8 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
 
     def get_inb(po_str, item_code):
         if pd.isna(po_str) or po_str == '': return pd.Series({'Rcv_Date': pd.NaT, 'Rcv_Qty': 0})
-        pos = [p.strip() for p in po_str.split(',')]
-        subset = inb_agg[(inb_agg['POnumber'].isin(pos)) & (inb_agg['ItemCode'] == item_code)]
-        if subset.empty: return pd.Series({'Rcv_Date': pd.NaT, 'Rcv_Qty': 0})
-        return pd.Series({'Rcv_Date': subset['Rcv_Date'].max(), 'Rcv_Qty': subset['Rcv_Qty'].sum()})
+        subset = inb_agg[(inb_agg['POnumber'].isin([p.strip() for p in po_str.split(',')])) & (inb_agg['ItemCode'] == item_code)]
+        return pd.Series({'Rcv_Date': subset['Rcv_Date'].max(), 'Rcv_Qty': subset['Rcv_Qty'].sum()}) if not subset.empty else pd.Series({'Rcv_Date': pd.NaT, 'Rcv_Qty': 0})
 
     merged[['Rcv_Date', 'Rcv_Qty']] = merged.apply(lambda row: get_inb(row['PO_No'], row['Item_Code']), axis=1)
 
@@ -188,11 +211,9 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
         if row['PO_No'] == '': return 'Routing Approval'
         elif row['Rcv_Qty'] == 0: return 'Menunggu Pengiriman'
         elif row['Rcv_Qty'] < row['PO_Qty']: return 'Diterima Sebagian'
-        else: return 'Sudah Diterima'
+        return 'Sudah Diterima'
 
     merged['Status'] = merged.apply(get_status, axis=1)
-    
-    # Kalkulasi Qty Outstanding
     merged['PO_Qty'] = pd.to_numeric(merged['PO_Qty'], errors='coerce').fillna(0)
     merged['Rcv_Qty'] = pd.to_numeric(merged['Rcv_Qty'], errors='coerce').fillna(0)
     merged['Qty_Outstanding'] = merged['PO_Qty'] - merged['Rcv_Qty']
@@ -203,194 +224,96 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     merged['Vendor'] = merged['Vendor'].fillna('-')
     merged['Tipe_PO'] = merged['Tipe_PO'].fillna('-')
     
-    final_cols = ['PR_Date', 'PR_Manual_No', 'Item_Code', 'Item_Name', 'PR_Qty', 'PO_Date', 'PO_No', 'Vendor', 'Tipe_PO', 'PO_Qty', 'Rcv_Date', 'Rcv_Qty', 'Qty_Outstanding', 'Status']
-    return merged[final_cols]
-
-def get_formatted_archive_list():
-    files = [f for f in os.listdir(OUTPUT_FOLDER) if f.endswith('.xlsx')]
-    if not files: return []
-    files.sort(key=lambda x: os.path.getmtime(os.path.join(OUTPUT_FOLDER, x)), reverse=True)
-    formatted_list = []
-    for idx, f in enumerate(files):
-        mtime = os.path.getmtime(os.path.join(OUTPUT_FOLDER, f))
-        dt_str = datetime.fromtimestamp(mtime).strftime("%d/%m/%Y %H:%M:%S")
-        label = f"[{dt_str}] {f}"
-        if idx == 0: label += " ⭐ [TERBARU]"
-        formatted_list.append((label, f))
-    return formatted_list
+    return merged[['PR_Date', 'PR_Manual_No', 'Item_Code', 'Item_Name', 'PR_Qty', 'PO_Date', 'PO_No', 'Vendor', 'Tipe_PO', 'PO_Qty', 'Rcv_Date', 'Rcv_Qty', 'Qty_Outstanding', 'Status']]
 
 # ==========================================
-# 3 TABS MENU NAVIGATION
+# 3 MENU UTAMA
 # ==========================================
-selected_tab = st.radio(
-    "Navigation Menu",
-    ["📊 Dashboard", "⚙️ Proses Data", "📥 Download / Arsip"],
-    horizontal=True,
-    label_visibility="collapsed"
-)
+selected_tab = st.radio("Navigation", ["📊 Dashboard", "⚙️ Proses Data", "📥 Download / Arsip"], horizontal=True, label_visibility="collapsed")
+st.markdown("<hr style='margin: 5px 0 15px 0;'>", unsafe_allow_html=True)
 
-st.markdown("""<hr style="margin: 5px 0 15px 0; border: none; border-top: 1px solid #1e3d59;">""", unsafe_allow_html=True)
-
-# ==========================================
-# TAB 1: DASHBOARD
-# ==========================================
 if selected_tab == "📊 Dashboard":
-    st.subheader("Purchase Data Tracking | Executive Dashboard")
-    
+    st.subheader("Executive Dashboard")
     if 'df_final' in st.session_state:
         df_final = st.session_state['df_final']
         if 'last_saved' in st.session_state:
-            st.caption(f"📁 Active Dataset: `{st.session_state['last_saved']}`")
-        
+            st.caption(f"📁 Active Dataset (GDrive): `{st.session_state['last_saved']}`")
         c1, c2, c3, c4 = st.columns(4)
-        status_counts = df_final['Status'].value_counts()
-        with c1: st.metric("Routing Approval", status_counts.get("Routing Approval", 0))
-        with c2: st.metric("Menunggu Pengiriman", status_counts.get("Menunggu Pengiriman", 0))
-        with c3: st.metric("Diterima Sebagian", status_counts.get("Diterima Sebagian", 0))
-        with c4: st.metric("Sudah Diterima", status_counts.get("Sudah Diterima", 0))
+        sc = df_final['Status'].value_counts()
+        c1.metric("Routing Approval", sc.get("Routing Approval", 0))
+        c2.metric("Menunggu Pengiriman", sc.get("Menunggu Pengiriman", 0))
+        c3.metric("Diterima Sebagian", sc.get("Diterima Sebagian", 0))
+        c4.metric("Sudah Diterima", sc.get("Sudah Diterima", 0))
+        
+        ca1, ca2 = st.columns(2)
+        with ca1: st.plotly_chart(px.pie(df_final, names='Status', title='Status Proporsi'), use_container_width=True)
+        with ca2: 
+            tv = df_final[df_final['Vendor'] != '-']['Vendor'].value_counts().head(10).reset_index()
+            tv.columns = ['Vendor', 'Jumlah']
+            st.plotly_chart(px.bar(tv, x='Jumlah', y='Vendor', orientation='h', title='Top Vendor'), use_container_width=True)
+        st.dataframe(df_final.head(100), use_container_width=True)
+    else: st.warning("Belum ada data.")
 
-        st.write("")
-        col_chart1, col_chart2 = st.columns(2)
-        with col_chart1:
-            fig_pie = px.pie(df_final, names='Status', title='Proporsi Status Supply Chain', color_discrete_sequence=px.colors.qualitative.Pastel)
-            st.plotly_chart(fig_pie, use_container_width=True)
-        with col_chart2:
-            top_v = df_final[df_final['Vendor'] != '-']['Vendor'].value_counts().head(10).reset_index()
-            top_v.columns = ['Vendor', 'Jumlah']
-            fig_b = px.bar(top_v, x='Jumlah', y='Vendor', orientation='h', title='Top 10 Active Vendors', color='Jumlah')
-            fig_b.update_layout(yaxis={'categoryorder':'total ascending'})
-            st.plotly_chart(fig_b, use_container_width=True)
-
-        st.subheader("Master Data Grid Preview")
-        st.dataframe(df_final.head(100), use_container_width=True, height=380)
-    else:
-        st.warning("⚠️ Belum ada file arsip ditemukan. Silakan proses data melalui menu **⚙️ Proses Data**.")
-
-# ==========================================
-# TAB 2: PROSES DATA (2 PILIHAN)
-# ==========================================
 elif selected_tab == "⚙️ Proses Data":
-    st.subheader("Purchase Data Tracking | Processing Center")
-    sub_proc_option = st.radio("Pilih Modul Proses:", ["1. Purchase Data Tracking (Full ETL)", "2. Outstanding Information (Filter by Item Code)"], horizontal=True)
+    st.subheader("Processing Center (Full ETL)")
+    u1, u2 = st.columns(2)
+    with u1:
+        pr_b = st.file_uploader("PR Data (Base)", type=['xlsx'])
+        pr_c = st.file_uploader("PRN Data (Closed)", type=['xlsx'])
+        po_l = st.file_uploader("PO Data - Lokal", type=['xlsx'])
+    with u2:
+        po_i = st.file_uploader("PO Data - Impor", type=['xlsx'])
+        in_b = st.file_uploader("Inbound Data", type=['xlsx'])
+    
+    if st.button("🚀 Proses & Sync GDrive", type="primary"):
+        if all([pr_b, pr_c, po_l, po_i, in_b]):
+            with st.spinner("Memproses..."):
+                df_out = process_tracking_data(pr_b, pr_c, po_l, po_i, in_b)
+                buf = io.BytesIO()
+                df_out.to_excel(buf, index=False)
+                buf.seek(0)
+                fname = f"Tracking_Final_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                ok, res = upload_to_gdrive(buf, fname)
+                if ok:
+                    st.success("Tersimpan permanen di GDrive!")
+                    st.session_state['df_final'] = df_out
+                    st.session_state['last_saved'] = fname
+                else: st.error(f"Gagal GDrive: {res}")
+        else: st.error("Upload 5 file lengkap dulu.")
+
     st.divider()
-    
-    if sub_proc_option == "1. Purchase Data Tracking (Full ETL)":
-        st.markdown('<div class="erp-panel">Unggah dokumen sumber (.xlsx). Sistem menormalisasi spasi, konsolidasi multi-PR, dan audit status <i>RequestClosed</i>.</div>', unsafe_allow_html=True)
-        col_u1, col_u2 = st.columns(2)
-        with col_u1:
-            file_pr_2026 = st.file_uploader("PR Data (Base 2026)", type=['xlsx'], key="u_pr_base")
-            file_pr_lama = st.file_uploader("PRN Data (Closed Status Audit)", type=['xlsx'], key="u_pr_closed")
-            file_po_lokal = st.file_uploader("PO Data - Lokal", type=['xlsx'], key="u_po_lok")
-        with col_u2:
-            file_po_impor = st.file_uploader("PO Data - Impor", type=['xlsx'], key="u_po_imp")
-            file_inbound = st.file_uploader("Inbound Data (Warehouse Receipts)", type=['xlsx'], key="u_inb")
+    st.subheader("Filter Outstanding by Item Code")
+    item_file = st.file_uploader("Upload Excel Item Code", type=['xlsx'])
+    if st.button("🔍 Generate Outstanding"):
+        if item_file and 'df_final' in st.session_state:
+            base_df = st.session_state['df_final'].copy()
+            up_df = pd.read_excel(item_file)
+            target_col = [c for c in up_df.columns if 'item' in c.lower() and 'code' in c.lower()]
+            col_name = target_col[0] if target_col else up_df.columns[0]
+            codes = up_df[col_name].dropna().astype(str).str.strip().unique()
             
-        st.write("")
-        run_process = st.button("⚙️ Execute Full ETL & Save", type="primary")
-        
-        if run_process:
-            if all([file_pr_2026, file_pr_lama, file_po_lokal, file_po_impor, file_inbound]):
-                with st.spinner('Menjalankan Data Transformation Pipeline...'):
-                    df_final = process_tracking_data(file_pr_2026, file_pr_lama, file_po_lokal, file_po_impor, file_inbound)
-                    now_dt = datetime.now()
-                    timestamp_file = now_dt.strftime("%Y%m%d_%H%M%S")
-                    saved_filename = f"Tracking_Final_{timestamp_file}.xlsx"
-                    saved_filepath = os.path.join(OUTPUT_FOLDER, saved_filename)
-                    df_final.to_excel(saved_filepath, index=False)
-                    
-                    st.session_state['df_final'] = df_final
-                    st.session_state['last_saved'] = saved_filename
-                    st.success(f"✅ Data berhasil diproses & diarsipkan ke server sebagai `{saved_filename}`! Silakan cek menu **📊 Dashboard**.")
-            else:
-                st.error("⚠️ Error: Kelima file sumber wajib diunggah lengkap!")
+            base_df['Code_Clean'] = base_df['Item_Code'].astype(str).str.strip()
+            out_df = base_df[base_df['Code_Clean'].isin(codes) & (base_df['Status'] != 'Sudah Diterima')].drop(columns=['Code_Clean'])
+            st.dataframe(out_df, use_container_width=True)
+            
+            out_buf = io.BytesIO()
+            out_df.to_excel(out_buf, index=False)
+            out_buf.seek(0)
+            st.download_button("📥 Download Outstanding (.xlsx)", out_buf.getvalue(), f"Outstanding_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-    elif sub_proc_option == "2. Outstanding Information (Filter by Item Code)":
-        st.markdown('<div class="erp-panel">Unggah file Excel berisi kolom <b>Item Code</b>. Sistem akan otomatis menduplikasi yang unik, mencocokkan ke arsip terbaru, mengecualikan status <b>Sudah Diterima</b>, dan menghitung <b>Qty_Outstanding</b>.</div>', unsafe_allow_html=True)
-        
-        file_item_input = st.file_uploader("Upload File Item Code (.xlsx)", type=['xlsx'], key="u_item_filter")
-        run_filter = st.button("🔍 Generate Outstanding Report", type="primary")
-        
-        if run_filter:
-            if file_item_input is not None:
-                # Ambil arsip terbaru otomatis
-                latest_path, latest_name = get_latest_archive_filepath()
-                if not latest_path:
-                    st.error("⚠️ Belum ada file arsip dasar di server. Jalankan Full ETL terlebih dahulu!")
-                else:
-                    try:
-                        df_base_master = pd.read_excel(latest_path)
-                        df_item_upload = pd.read_excel(file_item_input)
-                        
-                        # Cari kolom yang mirip item code
-                        target_col = None
-                        for col in df_item_upload.columns:
-                            if 'item' in str(col).lower() and 'code' in str(col).lower():
-                                target_col = col
-                                break
-                        if not target_col:
-                            target_col = df_item_upload.columns[0] # fallback kolom pertama
-                            
-                        unique_item_codes = df_item_upload[target_col].dropna().astype(str).str.strip().unique()
-                        
-                        # Filter master by item codes AND exclude 'Sudah Diterima'
-                        df_base_master['Item_Code_Clean'] = df_base_master['Item_Code'].astype(str).str.strip()
-                        filtered_df = df_base_master[
-                            df_base_master['Item_Code_Clean'].isin(unique_item_codes) & 
-                            (df_base_master['Status'] != 'Sudah Diterima')
-                        ].copy()
-                        
-                        # Drop helper cleaning col before export
-                        if 'Item_Code_Clean' in filtered_df.columns:
-                            filtered_df = filtered_df.drop(columns=['Item_Code_Clean'])
-                            
-                        st.success(f"✅ Berhasil memproses! Menemukan {len(filtered_df)} baris data outstanding dari {len(unique_item_codes)} unique item code unik.")
-                        st.dataframe(filtered_df, use_container_width=True, height=400)
-                        
-                        # Download Output
-                        out_io = io.BytesIO()
-                        filtered_df.to_excel(out_io, index=False, sheet_name='Outstanding Report')
-                        timestamp_file = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        st.download_button(
-                            label="📥 Download Outstanding Report (.xlsx)",
-                            data=out_io.getvalue(),
-                            file_name=f"Outstanding_Report_{timestamp_file}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            type="primary"
-                        )
-                    except Exception as e:
-                        st.error(f"❌ Terjadi kesalahan saat membaca file/memproses: {e}")
-            else:
-                st.warning("⚠️ Mohon unggah file Excel berisi Item Code terlebih dahulu.")
-
-# ==========================================
-# TAB 3: DOWNLOAD / ARSIP
-# ==========================================
 elif selected_tab == "📥 Download / Arsip":
-    st.subheader("Purchase Data Tracking | Audit & Document Repository")
-    st.markdown('<div class="erp-panel">Arsip historis hasil eksekusi pengolahan data tersimpan di server. File terbaru diberi penanda khusus.</div>', unsafe_allow_html=True)
-    
-    archive_items = get_formatted_archive_list()
-    
-    if archive_items:
-        labels = [item[0] for item in archive_items]
-        filenames = [item[1] for item in archive_items]
-        
-        selected_label = st.selectbox("Select Archived Document:", labels)
-        selected_filename = dict(zip(labels, filenames))[selected_label]
-        
-        file_path_dl = os.path.join(OUTPUT_FOLDER, selected_filename)
-        if os.path.exists(file_path_dl):
-            df_preview = pd.read_excel(file_path_dl)
-            st.markdown(f"**Selected File Metadata:** `📁 {selected_filename}` | Total Records: `{len(df_preview)} rows`")
-            st.dataframe(df_preview.head(50), use_container_width=True, height=380)
-            
-            with open(file_path_dl, "rb") as f:
-                st.download_button(
-                    label=f"📥 Download Repository File ({selected_filename})",
-                    data=f.read(),
-                    file_name=selected_filename,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary"
-                )
-    else:
-        st.warning("⚠️ Belum ada file arsip ditemukan pada server direktori `saved_reports/`.")
+    st.subheader("Cloud Repository (GDrive)")
+    archives = list_gdrive_archives()
+    if archives:
+        labels = [a[0] for a in archives]
+        ids = [a[1] for a in archives]
+        selected_lbl = st.selectbox("Select Cloud Archived Document:", labels)
+        sel_id = ids[labels.index(selected_lbl)]
+        buf = download_from_gdrive(sel_id)
+        if buf:
+            df_prev = pd.read_excel(buf)
+            st.dataframe(df_prev.head(50), use_container_width=True)
+            buf.seek(0)
+            target_fname = selected_lbl.split('|').strip() if '|' in selected_lbl else "archive.xlsx"
+            st.download_button("📥 Download File Ini", buf.getvalue(), target_fname, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    else: st.warning("Belum ada arsip di GDrive.")
