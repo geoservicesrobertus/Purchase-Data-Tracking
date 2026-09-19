@@ -9,10 +9,8 @@ from datetime import datetime
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 from google.oauth2 import service_account
+import plotly.express as px
 
-# ==========================================
-# 0. CONFIG & SETUP
-# ==========================================
 st.set_page_config(
     page_title="Purchase Data Tracking - PT. Geoservices",
     page_icon="🏭",
@@ -36,7 +34,7 @@ CREDS_DICT = {
   "type": "service_account",
   "project_id": "purchase-data-tracking",
   "private_key_id": "1b9b383c0665eb93d863f9b786c561c82063fe13",
-  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDU/wp2SztkqhXW\ndm0AD+jTvXCm4D3ZAYW9v6KHBXWS15naqFI1bww3LnF07VVeOnkKlFIqVqFcR5qN\n+zsxBsDgrm3t3PFMKCMrDpDk3hfS3Hw3cPn8APnYs/EMtWRNJr+Ky9ZcqOT1De4H\nPlvCG0bIGqWG3tIqx8DsYcSGw9f0ruRUaXrvUF9YbKOPr9uEgTszkr60iZtFA5Bu\n2VOqBseMuQDswbqh4ZSqRDaLvjux91ijKYhHPVuEpUCB3LaiHPZEs/5YM2EF8SyD\nGW6lyA5HTwZYBwQ6ScrtJj5cyGYKKbIs3g2oIXvo2oc/YIxQjSKr3/MB02KCN4M9\n1MwjvbDbAgMBAAECggEAHyqAZ+XDN4wRrPNgKKmrSkxGbwyR0C6CWMzxJaudVBK7\nHv0RJmNs2KgxjsfpfWO18V/Zk/tgGgYaLdtMgnR4BYhQaoUxQ5D98F9twSdkOgTs\nIhqkYYTtChHuXAswtX9NeKwx3hYShm723NV5jLH8DeykOtNg0kSvTIdTv9ppP5KR\nLev4Th5Nhoj20g+1dc6GGZlGSFDjmENwVM96FRswfWMPttOi7/Q3GADv07Ts8QWk\nGx6tO9c+MgJWXOGbvC6XBWke8tpDI9BEvUTheFs2cE8557FFvmDCjN3WFrFVSf5w\nu74t1rN2OFed8icyx50zI1zVdT/H2jpWHip3GIx75QKBgQD7V/A6Q6MiFyNMfofP\nU2Ky0c33ZkAzYhFWH2XB0eKaRt/xK2EXNGdkghCSISuOzwL+HDst9OQPF7mEmJjD\nuwMcBd7NLI16RwA36I9H5HecVAUIDdpS0nk711swSGeRmJ4IPBTs38otjIJ17A8m\n1FU8DIre+m+UCEBZp1VJT+2X9QKBgQDY8TsO/LxfOtb3LL7unMi8FqnHYiurQ0b/\nerebYsduzySzmq+SLgD5aUx8vg66IQwAs63cCVKp5PHPjbMKYylN0z6hkvtr+DTQ\noUbzlg/i+uSYwRK/DnM+1X/M8N/0wAnjoBzzbfREPCBfVkAqgXbzJB5KLeEB5+Fz\nEXT/zcAzjwKBgQD2K38B0dUpQng0J4lkqkr00UBlmyQuL1LDgyTq3GKQr/IOB2qk\ni5Logesw9IPw7xgDQitEK6Jild4B3GNi8PtuquE5GvXGWVwBZilPRJlR54i2Brta\newJ6dca+V2v40f2WGyJzjgw66G+uh3Gfmj+Q/MfW9HnsBtjf9mA12a7fMQKBgQC6\n0AhOYJ8J1k5UrSiBq2tEZLOw6T23jgiuaYuAeDBKoH/3VaYI2Cqom99sr/FYoKqI\nVDHMAA86E9eTJm9d64Qe62DMnBh7olJAshC6I6fsiqadT+2HrrbZDdqurWH9jf02\nEaO8kBu/QpOR5WD9+VxoBds7f4R6Mqa2gvrgaNowywKBgQCinsuBMjoq8DZ5f7eO\nVpUWBPMr25XiaDUDx5ru/UP95GqSyB36YLLufC1CyJlriAPJqK93dmv/2pVADHTz\nvpeIl8gKZKsKXOC7llzcv0gF7k9LG6VDr4tjuSuULIDlm5aes2qYvVzx1atVLqxj\neLz0JSdLNyxaBkVYgARpioi21A==\n-----END PRIVATE KEY-----\n",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDU/wp2SztkqhXW\ndm0AD+jTvXCm4D3ZAYW9v6KHBXWS15naqFI1bww3LnF07VVeOnkKlFIqVqFcR5qN\n+zsxBsDgrm3t3PFMKCMrDpDk3hfS3Hw3cPn8APnYs/EMtWRNJr+Ky9ZcqOT1De4H\nPlvCG0bIGqWG3tIqx8DsYcSGw9f0ruRUaXrvUF9YbKOPr9uEgTszkr60iZtFA5Bu\n2VOqBseMuQDswbqh4ZSqRDaLvjux91ijKYhHPVuEpUCB3LaiHPZEs/5YM2EF8SyD\nGW6lyA5HTwZYBwQ6ScrtJj5cyGYKKbIs3g2oIXvo2oc/YIxQjSKr3/MB02KCN4M9\n1MwjvbDbAgMBAAECggEAHyqAZ+XDN4wRrPNgKKmrSkxGbwyR0C6CWMzxJaudVBK7\nHv0RJmNs2KgxjsfpfWO18V/Zk/tgGgYaLdtMgnR4BYhQaoUxQ5D98F9twSdkOgTs\nIhqkYYTtChHuXAswtX9NeKwx3hYShm723NV5jLH8DeykOtNg0kSvTIdTv9ppP5KR\nLev4Th5Nhoj20g+1dc6GGZlGSFDjmENwVM96FRswfWMPttOi7/Q3GADv07Ts8QWk\nGx6tO9c+MgJWXOGbvC6XBWke8tpDI9BEvUTheFs2cE8557FFvmDCjN3WFrFVSf5w\nu74t1rN2OFed8icyx50zI1zVdT/H2jpWHip3GIx75QKBgQD7V/A6Q6MiFyNMfofP\nU2Ky0c33ZkAzYhFWH2XB0eKaRt/xK2EXNGdkghCSISuOzwL+HDst9OQPF7mEmJjD\nuwMcBd7NLI16RwA36I9H5HecVAUIDdpS0nk711swSGeRmJ4IPBTs38otjIJ17A8m\n1FU8DIre+m+UCEBZp1VJT+2X9QKBgQDY8TsO/LxfOtb3LL7unMi8FqnHYiurQ0b/\nerebYsduzySzmq+SLgD5aUx8vg66IQwAs63cCVKp5PHPjbMKYylN0z6hkvtr+DTQ\noUbzlg/i+uSYwRK/DnM+1X/M8N/0wAnjoBzzbfREPCBfVkAqgXbzJB5KLeEB5+Fz\nEXT/zcAzjwKBgQD2K38B0dUpQng0J4lkqkr00UBlmyQuL1LDgyTq3GKQr/IOB2qk\ni5Logesw9IPw7xgDQitEK6Jild4B3GNi8PtuquE5GvXGWVwBZilPRJlR54i2Brta\newJ6dca+V2v40f2WGyJzjgw66G+uh3Gfmj+Q/MfW9HnsBtjf9mA12a7fMQKBgQC6\0AhOYJ8J1k5UrSiBq2tEZLOw6T23jgiuaYuAeDBKoH/3VaYI2Cqom99sr/FYoKqI\nVDHMAA86E9eTJm9d64Qe62DMnBh7olJAshC6I6fsiqadT+2HrrbZDdqurWH9jf02\nEaO8kBu/QpOR5WD9+VxoBds7f4R6Mqa2gvrgaNowywKBgQCinsuBMjoq8DZ5f7eO\nVpUWBPMr25XiaDUDx5ru/UP95GqSyB36YLLufC1CyJlriAPJqK93dmv/2pVADHTz\nvpeIl8gKZKsKXOC7llzcv0gF7k9LG6VDr4tjuSuULIDlm5aes2qYvVzx1atVLqxj\neLz0JSdLNyxaBkVYgARpioi21A==\n-----END PRIVATE KEY-----\n",
   "client_email": "robertus-yuseno@purchase-data-tracking.iam.gserviceaccount.com",
   "client_id": "109589672772004723099",
   "auth_uri": "https://accounts.google.com/o/oauth2/auth",
@@ -89,22 +87,14 @@ def get_base64_image(image_path):
             return base64.b64encode(f.read()).decode('utf-8')
     return None
 
-# ==========================================
-# AUTO LOAD LATEST FROM GDRIVE
-# ==========================================
 if 'df_final' not in st.session_state:
     archives = list_gdrive_archives()
     if archives:
-        latest_id = archives[0]
-        latest_name = archives[0]
-        buf = download_from_gdrive(latest_id)
+        buf = download_from_gdrive(archives[0])
         if buf:
             st.session_state['df_final'] = pd.read_excel(buf)
-            st.session_state['last_saved'] = latest_name
+            st.session_state['last_saved'] = archives[0]
 
-# ==========================================
-# HEADER
-# ==========================================
 c_left, c_right = st.columns()
 logo_b64 = get_base64_image("Logo_PT_Geoservices_4K_Transparent.jpg")
 with c_left:
@@ -123,9 +113,6 @@ with c_right:
 
 st.write("")
 
-# ==========================================
-# CORE ENGINE
-# ==========================================
 @st.cache_data
 def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     pr_df = pd.read_excel(pr_new, header=1)
@@ -226,10 +213,6 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     
     return merged[['PR_Date', 'PR_Manual_No', 'Item_Code', 'Item_Name', 'PR_Qty', 'PO_Date', 'PO_No', 'Vendor', 'Tipe_PO', 'PO_Qty', 'Rcv_Date', 'Rcv_Qty', 'Qty_Outstanding', 'Status']]
 
-# ==========================================
-# 3 MENU UTAMA
-# ==========================================
-import plotly.express as px
 selected_tab = st.radio("Navigation", ["📊 Dashboard", "⚙️ Proses Data", "📥 Download / Arsip"], horizontal=True, label_visibility="collapsed")
 st.markdown("<hr style='margin: 5px 0 15px 0;'>", unsafe_allow_html=True)
 
