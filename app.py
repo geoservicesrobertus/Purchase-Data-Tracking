@@ -34,7 +34,36 @@ CREDS_DICT = {
   "type": "service_account",
   "project_id": "purchase-data-tracking",
   "private_key_id": "1b9b383c0665eb93d863f9b786c561c82063fe13",
-  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDU/wp2SztkqhXW\ndm0AD+jTvXCm4D3ZAYW9v6KHBXWS15naqFI1bww3LnF07VVeOnkKlFIqVqFcR5qN\n+zsxBsDgrm3t3PFMKCMrDpDk3hfS3Hw3cPn8APnYs/EMtWRNJr+Ky9ZcqOT1De4H\nPlvCG0bIGqWG3tIqx8DsYcSGw9f0ruRUaXrvUF9YbKOPr9uEgTszkr60iZtFA5Bu\n2VOqBseMuQDswbqh4ZSqRDaLvjux91ijKYhHPVuEpUCB3LaiHPZEs/5YM2EF8SyD\nGW6lyA5HTwZYBwQ6ScrtJj5cyGYKKbIs3g2oIXvo2oc/YIxQjSKr3/MB02KCN4M9\n1MwjvbDbAgMBAAECggEAHyqAZ+XDN4wRrPNgKKmrSkxGbwyR0C6CWMzxJaudVBK7\nHv0RJmNs2KgxjsfpfWO18V/Zk/tgGgYaLdtMgnR4BYhQaoUxQ5D98F9twSdkOgTs\nIhqkYYTtChHuXAswtX9NeKwx3hYShm723NV5jLH8DeykOtNg0kSvTIdTv9ppP5KR\nLev4Th5Nhoj20g+1dc6GGZlGSFDjmENwVM96FRswfWMPttOi7/Q3GADv07Ts8QWk\nGx6tO9c+MgJWXOGbvC6XBWke8tpDI9BEvUTheFs2cE8557FFvmDCjN3WFrFVSf5w\nu74t1rN2OFed8icyx50zI1zVdT/H2jpWHip3GIx75QKBgQD7V/A6Q6MiFyNMfofP\U2Ky0c33ZkAzYhFWH2XB0eKaRt/xK2EXNGdkghCSISuOzwL+HDst9OQPF7mEmJjD\nuwMcBd7NLI16RwA36I9H5HecVAUIDdpS0nk711swSGeRmJ4IPBTs38otjIJ17A8m\n1FU8DIre+m+UCEBZp1VJT+2X9QKBgQDY8TsO/LxfOtb3LL7unMi8FqnHYiurQ0b/\nerebYsduzySzmq+SLgD5aUx8vg66IQwAs63cCVKp5PHPjbMKYylN0z6hkvtr+DTQ\noUbzlg/i+uSYwRK/DnM+1X/M8N/0wAnjoBzzbfREPCBfVkAqgXbzJB5KLeEB5+Fz\EXT/zcAzjwKBgQD2K38B0dUpQng0J4lkqkr00UBlmyQuL1LDgyTq3GKQr/IOB2qk\ni5Logesw9IPw7xgDQitEK6Jild4B3GNi8PtuquE5GvXGWVwBZilPRJlR54i2Brta\newJ6dca+V2v40f2WGyJzjgw66G+uh3Gfmj+Q/MfW9HnsBtjf9mA12a7fMQKBgQC6\n0AhOYJ8J1k5UrSiBq2tEZLOw6T23jgiuaYuAeDBKoH/3VaYI2Cqom99sr/FYoKqI\nVDHMAA86E9eTJm9d64Qe62DMnBh7olJAshC6I6fsiqadT+2HrrbZDdqurWH9jf02\nEaO8kBu/QpOR5WD9+VxoBds7f4R6Mqa2gvrgaNowywKBgQCinsuBMjoq8DZ5f7eO\nVpUWBPMr25XiaDUDx5ru/UP95GqSyB36YLLufC1CyJlriAPJqK93dmv/2pVADHTz\nvpeIl8gKZKsKXOC7llzcv0gF7k9LG6VDr4tjuSuULIDlm5aes2qYvVzx1atVLqxj\neLz0JSdLNyxaBkVYgARpioi21A==\n-----END PRIVATE KEY-----\n",
+  "private_key": (
+      "-----BEGIN PRIVATE KEY-----\n"
+      "MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDU/wp2SztkqhXW\n"
+      "dm0AD+jTvXCm4D3ZAYW9v6KHBXWS15naqFI1bww3LnF07VVeOnkKlFIqVqFcR5qN\n"
+      "+zsxBsDgrm3t3PFMKCMrDpDk3hfS3Hw3cPn8APnYs/EMtWRNJr+Ky9ZcqOT1De4H\n"
+      "PlvCG0bIGqWG3tIqx8DsYcSGw9f0ruRUaXrvUF9YbKOPr9uEgTszkr60iZtFA5Bu\n"
+      "2VOqBseMuQDswbqh4ZSqRDaLvjux91ijKYhHPVuEpUCB3LaiHPZEs/5YM2EF8SyD\n"
+      "GW6lyA5HTwZYBwQ6ScrtJj5cyGYKKbIs3g2oIXvo2oc/YIxQjSKr3/MB02KCN4M9\n"
+      "1MwjvbDbAgMBAAECggEAHyqAZ+XDN4wRrPNgKKmrSkxGbwyR0C6CWMzxJaudVBK7\n"
+      "Hv0RJmNs2KgxjsfpfWO18V/Zk/tgGgYaLdtMgnR4BYhQaoUxQ5D98F9twSdkOgTs\n"
+      "IhqkYYTtChHuXAswtX9NeKwx3hYShm723NV5jLH8DeykOtNg0kSvTIdTv9ppP5KR\n"
+      "Lev4Th5Nhoj20g+1dc6GGZlGSFDjmENwVM96FRswfWMPttOi7/Q3GADv07Ts8QWk\n"
+      "Gx6tO9c+MgJWXOGbvC6XBWke8tpDI9BEvUTheFs2cE8557FFvmDCjN3WFrFVSf5w\n"
+      "u74t1rN2OFed8icyx50zI1zVdT/H2jpWHip3GIx75QKBgQD7V/A6Q6MiFyNMfofP\n"
+      "U2Ky0c33ZkAzYhFWH2XB0eKaRt/xK2EXNGdkghCSISuOzwL+HDst9OQPF7mEmJjD\n"
+      "uwMcBd7NLI16RwA36I9H5HecVAUIDdpS0nk711swSGeRmJ4IPBTs38otjIJ17A8m\n"
+      "1FU8DIre+m+UCEBZp1VJT+2X9QKBgQDY8TsO/LxfOtb3LL7unMi8FqnHYiurQ0b/\n"
+      "erebYsduzySzmq+SLgD5aUx8vg66IQwAs63cCVKp5PHPjbMKYylN0z6hkvtr+DTQ\n"
+      "oUbzlg/i+uSYwRK/DnM+1X/M8N/0wAnjoBzzbfREPCBfVkAqgXbzJB5KLeEB5+Fz\n"
+      "EXT/zcAzjwKBgQD2K38B0dUpQng0J4lkqkr00UBlmyQuL1LDgyTq3GKQr/IOB2qk\n"
+      "i5Logesw9IPw7xgDQitEK6Jild4B3GNi8PtuquE5GvXGWVwBZilPRJlR54i2Brta\n"
+      "ewJ6dca+V2v40f2WGyJzjgw66G+uh3Gfmj+Q/MfW9HnsBtjf9mA12a7fMQKBgQC6\n"
+      "0AhOYJ8J1k5UrSiBq2tEZLOw6T23jgiuaYuAeDBKoH/3VaYI2Cqom99sr/FYoKqI\n"
+      "VDHMAA86E9eTJm9d64Qe62DMnBh7olJAshC6I6fsiqadT+2HrrbZDdqurWH9jf02\n"
+      "EaO8kBu/QpOR5WD9+VxoBds7f4R6Mqa2gvrgaNowywKBgQCinsuBMjoq8DZ5f7eO\n"
+      "VpUWBPMr25XiaDUDx5ru/UP95GqSyB36YLLufC1CyJlriAPJqK93dmv/2pVADHTz\n"
+      "vpeIl8gKZKsKXOC7llzcv0gF7k9LG6VDr4tjuSuULIDlm5aes2qYvVzx1atVLqxj\n"
+      "eLz0JSdLNyxaBkVYgARpioi21A==\n"
+      "-----END PRIVATE KEY-----\n"
+  ),
   "client_email": "robertus-yuseno@purchase-data-tracking.iam.gserviceaccount.com",
   "client_id": "109589672772004723099",
   "auth_uri": "https://accounts.google.com/o/oauth2/auth",
