@@ -84,11 +84,11 @@ auto_load_latest_dashboard()
 # ==========================================
 # CLEAN CORPORATE HEADER WITH BASE64 LOGO
 # ==========================================
-c_left, c_right = st.columns()
+c_left, c_right = st.columns(2)
 logo_base64 = get_base64_image("Logo_PT_Geoservices_4K_Transparent.jpg")
 
 with c_left:
-  c_img, c_txt = st.columns()
+  c_img, c_txt = st.columns(2)
   with c_img:
     if logo_base64:
       st.markdown(
