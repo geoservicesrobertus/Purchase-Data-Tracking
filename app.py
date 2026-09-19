@@ -33,8 +33,11 @@ GDRIVE_FOLDER_ID = "1Z9-pgpCBqJ3iEjUdU7URLJZSlnU_Hgyk"
 CREDS_DICT = dict(st.secrets["gcp_service_account"])
 
 def get_gdrive_service():
+    creds_dict = dict(st.secrets["gcp_service_account"])
+    if isinstance(creds_dict.get("private_key"), str):
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
     creds = service_account.Credentials.from_service_account_info(
-        CREDS_DICT, scopes=['https://www.googleapis.com/auth/drive']
+        creds_dict, scopes=['https://www.googleapis.com/auth/drive']
     )
     return build('drive', 'v3', credentials=creds)
 
