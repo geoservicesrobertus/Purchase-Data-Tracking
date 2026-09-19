@@ -32,10 +32,17 @@ GDRIVE_FOLDER_ID = "1Z9-pgpCBqJ3iEjUdU7URLJZSlnU_Hgyk"
 
 CREDS_DICT = dict(st.secrets["gcp_service_account"])
 
+import base64
+
 def get_gdrive_service():
     creds_dict = dict(st.secrets["gcp_service_account"])
-    if isinstance(creds_dict.get("private_key"), str):
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+    pk = creds_dict.get("private_key", "")
+    # Handle literal \n or double escaped \\n
+    pk = pk.replace("\\\\n", "\n").replace("\\n", "\n")
+    # Pastikan bersih dari spasi tepi atau karakter asing
+    pk = pk.strip()
+    creds_dict["private_key"] = pk
+    
     creds = service_account.Credentials.from_service_account_info(
         creds_dict, scopes=['https://www.googleapis.com/auth/drive']
     )
