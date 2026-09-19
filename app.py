@@ -277,20 +277,30 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     merged['Status'] = merged.apply(get_status, axis=1)
     merged['Qty_Outstanding'] = merged['PO_Qty'] - merged['Rcv_Qty']
 
+    # Pastikan kolom wajib ada walaupun kosong
+    for col in ['PO_No', 'Vendor', 'Tipe_PO', 'PO_Date', 'Rcv_Date']:
+        if col not in merged.columns:
+            merged[col] = '-'
+        else:
+            merged[col] = merged[col].fillna('-')
+
+    merged['PO_Qty'] = pd.to_numeric(merged['PO_Qty'], errors='coerce').fillna(0)
+    merged['Rcv_Qty'] = pd.to_numeric(merged['Rcv_Qty'], errors='coerce').fillna(0)
+    merged['Qty_Outstanding'] = merged['PO_Qty'] - merged['Rcv_Qty']
+
     for col in ('PR_Date', 'PO_Date', 'Rcv_Date'):
-        merged[col] = pd.to_datetime(merged[col], errors='coerce').dt.strftime('%m/%d/%Y')
-        merged[col] = merged[col].fillna('-')
+        if col in merged.columns:
+            dt_s = pd.to_datetime(merged[col], errors='coerce')
+            merged[col] = dt_s.dt.strftime('%m/%d/%Y').fillna('-')
 
-    merged['Vendor'] = merged['Vendor'].fillna('-')
-    if 'Tipe_PO' not in merged.columns:
-        merged['Tipe_PO'] = '-'
-    merged['Tipe_PO'] = merged['Tipe_PO'].fillna('-')
-
-    return merged[[
+    # Susun kolom secara eksplisit agar tidak bergeser/tertukar
+    cols_order = [
         'PR_Date', 'PR_Manual_No', 'Item_Code', 'Item_Name', 'PR_Qty',
         'PO_Date', 'PO_No', 'Vendor', 'Tipe_PO', 'PO_Qty',
         'Rcv_Date', 'Rcv_Qty', 'Qty_Outstanding', 'Status',
-    ]]
+    ]
+    valid_cols = [c for c in cols_order if c in merged.columns]
+    return merged[valid_cols]
 
 
 def to_excel_bytes(df):
