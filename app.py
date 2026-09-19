@@ -124,7 +124,7 @@ if 'df_final' not in st.session_state:
             st.session_state['df_final'] = pd.read_excel(buf)
             st.session_state['last_saved'] = archives[0]
 
-c_left, c_right = st.columns()
+c_left, c_right = st.columns(2)
 logo_b64 = get_base64_image("Logo_PT_Geoservices_4K_Transparent.jpg")
 with c_left:
     c_img, c_txt = st.columns()
