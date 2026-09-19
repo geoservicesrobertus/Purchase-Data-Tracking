@@ -169,13 +169,12 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
         po['Tipe_PO'] = tipe
         return po
 
-    # 1. Clean PO seperti biasa
+   # 1. Clean PO
     po_df = pd.concat([clean_po(po_lok, "Lokal"), clean_po(po_imp, "Impor")], ignore_index=True)
     po_df['Item_Code'] = po_df['Item_Code'].astype(str).str.strip()
-    po_df['PO_Date_DT'] = pd.to_datetime(po_df['PO_Date'], errors='coerce')
-    po_df['PO_Qty_Num'] = pd.to_numeric(po_df['PO_Qty'], errors='coerce').fillna(0)
+    po_df['PO_No'] = po_df['PO_No'].astype(str).str.strip()
 
-    # 2. Expand PR Manual No jika koma/slash jadi multi-row detail per PO
+    # 2. Expand PR Manual No
     expanded_rows = []
     for _, row in po_df.iterrows():
         pr_str = str(row['PR_Manual_No_Orig']).strip()
@@ -211,18 +210,12 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
         po_exp['PO_Date_DT'] = pd.to_datetime(po_exp['PO_Date'], errors='coerce')
         po_exp['PO_Qty_Num'] = pd.to_numeric(po_exp['PO_Qty'], errors='coerce').fillna(0)
         
-        # Urutkan berdasarkan tanggal terbaru biar dedup ambil yang paling akhir
-        po_exp = po_exp.sort_values(by='PO_Date_DT', ascending=True)
-        
-        # Buang jika ada duplikat murni (PR_Manual_No_Clean + Item_Code + PO_Qty_Num sama, tapi keep='last' / terbaru)
-        # Atau jika maksudnya "kalau ada 2 PO kembar identik qty sama untuk PR/Item yang sama, ambil yang terbaru":
+        # Hapus duplikat murni berdasarkan kombinasi unik PR + Item + PO Number
         po_exp = po_exp.drop_duplicates(
-            subset=['PR_Manual_No_Clean', 'Item_Code', 'PO_Qty_Num'], 
+            subset=['PR_Manual_No_Clean', 'Item_Code', 'PO_No'], 
             keep='last'
         )
 
-        # Kelompokkan per unit PO line (tidak di-merge jadi string koma sembarangan kalau beda PO_No, 
-        # tapi tetap per unique PO_No/Item/PR)
         po_agg = po_exp.groupby(['PR_Manual_No_Clean', 'Item_Code', 'PO_No'], as_index=False).agg(
             PO_Date=('PO_Date', 'max'),
             PO_Qty=('PO_Qty_Num', 'sum'),
