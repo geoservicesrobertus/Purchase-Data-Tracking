@@ -304,7 +304,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     })
 
     inb_res = merged.apply(get_inb, axis=1)
-    merged[['Rcv_Date', 'Rcv_Qty', 'Inb_Match_Note']] = inb_res
+merged[['Rcv_Date', 'Rcv_Qty', 'Inb_Match_Note']] = inb_res
 
     merged['PO_Qty'] = pd.to_numeric(merged['PO_Qty'], errors='coerce').fillna(0)
     merged['Rcv_Qty'] = pd.to_numeric(merged['Rcv_Qty'], errors='coerce').fillna(0)
