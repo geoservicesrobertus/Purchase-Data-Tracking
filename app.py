@@ -46,7 +46,6 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 WIB = ZoneInfo("Asia/Jakarta")
 
 
-# Helper: Load local logo as base64 for guaranteed rendering
 def get_base64_image(image_path):
   if os.path.exists(image_path):
     with open(image_path, "rb") as img_file:
@@ -54,9 +53,6 @@ def get_base64_image(image_path):
   return None
 
 
-# ==========================================
-# AUTO-LOAD LATEST REPORT ON STARTUP (NON-EMPTY)
-# ==========================================
 def get_latest_archive_filepath():
   files = [f for f in os.listdir(OUTPUT_FOLDER) if f.endswith(".xlsx")]
   if files:
@@ -81,9 +77,6 @@ def auto_load_latest_dashboard():
 
 auto_load_latest_dashboard()
 
-# ==========================================
-# CLEAN CORPORATE HEADER WITH BASE64 LOGO
-# ==========================================
 c_left, c_right = st.columns([3, 1])
 logo_base64 = get_base64_image("Logo_PT_Geoservices_4K_Transparent.jpg")
 
@@ -173,27 +166,31 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
   def clean_po(file, tipe):
     po_raw = pd.read_excel(file, header=13)
     
-    # 🔥 SAPU BERSIH REJECTED SEBELUM KOLOM DIPOTONG 🔥
-    # Cek tiap kolom, kalau baris itu mengandung kata 'REJECT', langsung di-drop
-    mask_rejected = pd.Series(False, index=po_raw.index)
-    for col in po_raw.columns:
-        mask_rejected = mask_rejected | po_raw[col].astype(str).str.upper().str.contains("REJECT", na=False)
-    
-    # Simpan hanya baris yang TIDAK rejected
-    po = po_raw[~mask_rejected].copy()
+    # 1. Forward fill (ffill) SEMUA kolom terlebih dahulu agar item turunan/anak
+    #    mendapatkan status 'Rejected' & metadata PO yang sama dari baris pertamanya.
+    po_filled = po_raw.ffill()
 
-    # Baru potong kolom sesuai aslinya yang berfungsi
-    po = po[
-        [
-            "Purchase Order Number",
-            "PO Date",
-            "PR Manual No.",
-            "Item Code",
-            "Qty",
-            "Unnamed: 5",
-        ]
-    ].copy()
-    po.columns = [
+    # 2. Deteksi dan buang semua baris yang mengandung kata REJECT/DECLINE/CANCEL
+    mask_rejected = pd.Series(False, index=po_filled.index)
+    for col in po_filled.columns:
+      mask_rejected = mask_rejected | po_filled[col].astype(str).str.upper().str.contains("REJECT|DECLINE", na=False)
+    
+    po = po_filled[~mask_rejected].copy()
+
+    # 3. Ambil kolom standar yang dibutuhkan
+    cols_to_pull = [
+        "Purchase Order Number",
+        "PO Date",
+        "PR Manual No.",
+        "Item Code",
+        "Qty",
+        "Unnamed: 5",
+    ]
+    cols_available = [c for c in cols_to_pull if c in po.columns]
+    po = po[cols_available].copy()
+
+    rename_map = {}
+    standard_names = [
         "PO_No",
         "PO_Date",
         "PR_Manual_No_Orig",
@@ -201,9 +198,18 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
         "PO_Qty",
         "Vendor",
     ]
-    po["PO_No"] = po["PO_No"].ffill()
-    po["PO_Date"] = po["PO_Date"].ffill()
-    po["Vendor"] = po["Vendor"].ffill()
+    for i, col_name in enumerate(cols_available):
+      if i < len(standard_names):
+        rename_map[col_name] = standard_names[i]
+
+    po.rename(columns=rename_map, inplace=True)
+    
+    # Fallback jika ada kolom kustom yang absen
+    if "PO_No" not in po.columns: po["PO_No"] = ""
+    if "PO_Date" not in po.columns: po["PO_Date"] = pd.NaT
+    if "Vendor" not in po.columns: po["Vendor"] = "-"
+    if "PO_Qty" not in po.columns: po["PO_Qty"] = 0
+
     po = po.dropna(subset=["Item_Code"])
     po = po[po["Item_Code"].astype(str).str.strip() != "nan"]
     po["Tipe_PO"] = tipe
@@ -315,7 +321,6 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
   merged["Rcv_Qty"] = pd.to_numeric(merged["Rcv_Qty"], errors="coerce").fillna(0)
   merged['PR_Qty'] = pd.to_numeric(merged['PR_Qty'], errors="coerce").fillna(0)
   
-  # Aturan: Routing Approval = full PR_Qty, sisanya PO_Qty - Rcv_Qty
   def calc_outstanding(row):
       if row['Status'] == 'Routing Approval':
           return row['PR_Qty']
