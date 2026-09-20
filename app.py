@@ -180,25 +180,27 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     for col in po_raw.columns:
         is_status_col = "status" in str(col).lower()
         
-        # Kalau kolomnya berkaitan dengan status (misal: PO_Status), buang yg CLOSED & REJECT
         if is_status_col:
             mask_rejected = po_raw[col].astype(str).str.upper().str.contains("REJECT|DECLINE|CLOSED", na=False)
         else:
-            # Kolom biasa cuma buang yg REJECT/DECLINE aja biar gak salah sasaran
             mask_rejected = po_raw[col].astype(str).str.upper().str.contains("REJECT|DECLINE", na=False)
             
         if "Purchase Order Number" in po_raw.columns:
             bad_pos = po_raw.loc[mask_rejected, "Purchase Order Number"].dropna().unique()
             rejected_po_list.update(bad_pos)
             
-    # 3. Buang keseluruhan blok baris dari PO yang bermasalah tersebut
+    # 3. Buang keseluruhan blok baris dari PO yang bermasalah
     if "Purchase Order Number" in po_raw.columns:
         po_safe = po_raw[~po_raw["Purchase Order Number"].isin(rejected_po_list)].copy()
     else:
         po_safe = po_raw.copy()
         
-    # 4. AMAN melakukan Ffill untuk Date, Vendor, dll
-    po_filled = po_safe.ffill()
+    # 4. 🔥 [FIX] HANYA FFILL KOLOM HEADER! JANGAN FFILL ITEM CODE & QTY! 🔥
+    # Ini mencegah Item Code duplikat ke baris deskripsi kosong yang bikin Qty jadi dobel 400.
+    cols_to_ffill = ["Purchase Order Number", "PO Date", "PR Manual No.", "Unnamed: 5"]
+    for c in cols_to_ffill:
+        if c in po_safe.columns:
+            po_safe[c] = po_safe[c].ffill()
 
     # 5. Ekstrak kolom standar
     cols_to_pull = [
@@ -209,8 +211,8 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
         "Qty",
         "Unnamed: 5", 
     ]
-    cols_available = [c for c in cols_to_pull if c in po_filled.columns]
-    po = po_filled[cols_available].copy()
+    cols_available = [c for c in cols_to_pull if c in po_safe.columns]
+    po = po_safe[cols_available].copy()
 
     rename_map = {}
     standard_names = [
@@ -232,6 +234,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     if "Vendor" not in po.columns: po["Vendor"] = "-"
     if "PO_Qty" not in po.columns: po["PO_Qty"] = 0
 
+    # Karena Item_Code gak ikut di-ffill, baris deskripsi yang kosong pasti jadi NaN dan gampang di-drop di sini
     po = po.dropna(subset=["Item_Code"])
     po = po[po["Item_Code"].astype(str).str.strip() != "nan"]
     po["Tipe_PO"] = tipe
