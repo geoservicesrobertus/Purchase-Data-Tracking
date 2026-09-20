@@ -133,6 +133,11 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
       "Item_Name",
       "PR_Qty",
   ]
+  
+  # 🔥 Filter PR Qty = 0 di awal sebelum tracking dimulai
+  pr_data["PR_Qty"] = pd.to_numeric(pr_data["PR_Qty"], errors="coerce").fillna(0)
+  pr_data = pr_data[pr_data["PR_Qty"] > 0].copy()
+
   pr_data["Item_Code"] = pr_data["Item_Code"].astype(str).str.strip()
   pr_data["PR_Manual_No_Clean"] = (
       pr_data["PR_Manual_No"].astype(str).str.replace(" ", "")
@@ -170,23 +175,29 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     if "Purchase Order Number" in po_raw.columns:
         po_raw["Purchase Order Number"] = po_raw["Purchase Order Number"].ffill()
     
-    # 2. Cari nomor PO yang benar-benar mengandung REJECT/DECLINE
+    # 2. Cari nomor PO yang harus dibuang (REJECT / DECLINE / CLOSED)
     rejected_po_list = set()
     for col in po_raw.columns:
-        mask_rejected = po_raw[col].astype(str).str.upper().str.contains("REJECT|DECLINE", na=False)
+        is_status_col = "status" in str(col).lower()
+        
+        # Kalau kolomnya berkaitan dengan status (misal: PO_Status), buang yg CLOSED & REJECT
+        if is_status_col:
+            mask_rejected = po_raw[col].astype(str).str.upper().str.contains("REJECT|DECLINE|CLOSED", na=False)
+        else:
+            # Kolom biasa cuma buang yg REJECT/DECLINE aja biar gak salah sasaran
+            mask_rejected = po_raw[col].astype(str).str.upper().str.contains("REJECT|DECLINE", na=False)
+            
         if "Purchase Order Number" in po_raw.columns:
-            # Ambil nomor PO dari baris yang kena mask
             bad_pos = po_raw.loc[mask_rejected, "Purchase Order Number"].dropna().unique()
             rejected_po_list.update(bad_pos)
             
-    # 3. Buang keseluruhan blok baris dari PO yang masuk blacklist REJECTED
+    # 3. Buang keseluruhan blok baris dari PO yang bermasalah tersebut
     if "Purchase Order Number" in po_raw.columns:
         po_safe = po_raw[~po_raw["Purchase Order Number"].isin(rejected_po_list)].copy()
     else:
         po_safe = po_raw.copy()
         
-    # 4. Sekarang baru AMAN melakukan Ffill untuk Date, Vendor, dll
-    #    (Karena PO cacat sudah dibuang, statusnya gak akan tumpah/bocor ke PO bawahnya)
+    # 4. AMAN melakukan Ffill untuk Date, Vendor, dll
     po_filled = po_safe.ffill()
 
     # 5. Ekstrak kolom standar
@@ -196,7 +207,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
         "PR Manual No.",
         "Item Code",
         "Qty",
-        "Unnamed: 5", # Kolom Vendor di format Geoservices
+        "Unnamed: 5", 
     ]
     cols_available = [c for c in cols_to_pull if c in po_filled.columns]
     po = po_filled[cols_available].copy()
@@ -216,7 +227,6 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
 
     po.rename(columns=rename_map, inplace=True)
     
-    # Fallback
     if "PO_No" not in po.columns: po["PO_No"] = ""
     if "PO_Date" not in po.columns: po["PO_Date"] = pd.NaT
     if "Vendor" not in po.columns: po["Vendor"] = "-"
@@ -328,7 +338,6 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
 
   merged["Status"] = merged.apply(get_status, axis=1)
 
-  # Kalkulasi Qty Outstanding
   merged["PO_Qty"] = pd.to_numeric(merged["PO_Qty"], errors="coerce").fillna(0)
   merged["Rcv_Qty"] = pd.to_numeric(merged["Rcv_Qty"], errors="coerce").fillna(0)
   merged['PR_Qty'] = pd.to_numeric(merged['PR_Qty'], errors="coerce").fillna(0)
@@ -404,9 +413,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ==========================================
-# TAB 1: DASHBOARD
-# ==========================================
 if selected_tab == "📊 Dashboard":
   st.subheader("Purchase Data Tracking | Executive Dashboard")
 
@@ -464,9 +470,6 @@ if selected_tab == "📊 Dashboard":
         "⚠️ Belum ada file arsip ditemukan. Silakan proses data melalui menu **⚙️ Proses Data**."
     )
 
-# ==========================================
-# TAB 2: PROSES DATA
-# ==========================================
 elif selected_tab == "⚙️ Proses Data":
   st.subheader("Purchase Data Tracking | Processing Center")
   sub_proc_option = st.radio(
@@ -481,7 +484,7 @@ elif selected_tab == "⚙️ Proses Data":
 
   if sub_proc_option == "1. Purchase Data Tracking (Full ETL)":
     st.markdown(
-        f'<div class="erp-panel">Unggah dokumen sumber (.xlsx). Sistem menormalisasi spasi, konsolidasi multi-PR, dan membuang PO berstatus <i>Rejected</i>. Hasil disimpan permanen di folder lokal <code>{OUTPUT_FOLDER}</code>.</div>',
+        f'<div class="erp-panel">Unggah dokumen sumber (.xlsx). Sistem otomatis membuang PR dengan Qty=0, serta mendrop semua baris PO yang berstatus <i>Rejected/Closed</i>. Hasil disimpan permanen di folder lokal <code>{OUTPUT_FOLDER}</code>.</div>',
         unsafe_allow_html=True,
     )
     col_u1, col_u2 = st.columns(2)
@@ -613,9 +616,6 @@ elif selected_tab == "⚙️ Proses Data":
       else:
         st.warning("⚠️ Mohon unggah file Excel berisi Item Code terlebih dahulu.")
 
-# ==========================================
-# TAB 3: DOWNLOAD / ARSIP
-# ==========================================
 elif selected_tab == "📥 Download / Arsip":
   st.subheader("Purchase Data Tracking | Audit & Document Repository")
   st.markdown(
