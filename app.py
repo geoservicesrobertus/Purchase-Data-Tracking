@@ -46,6 +46,7 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 WIB = ZoneInfo("Asia/Jakarta")
 
 
+# Helper: Load local logo as base64 for guaranteed rendering
 def get_base64_image(image_path):
   if os.path.exists(image_path):
     with open(image_path, "rb") as img_file:
@@ -53,6 +54,9 @@ def get_base64_image(image_path):
   return None
 
 
+# ==========================================
+# AUTO-LOAD LATEST REPORT ON STARTUP (NON-EMPTY)
+# ==========================================
 def get_latest_archive_filepath():
   files = [f for f in os.listdir(OUTPUT_FOLDER) if f.endswith(".xlsx")]
   if files:
@@ -77,11 +81,14 @@ def auto_load_latest_dashboard():
 
 auto_load_latest_dashboard()
 
-c_left, c_right = st.columns(2)
+# ==========================================
+# CLEAN CORPORATE HEADER WITH BASE64 LOGO
+# ==========================================
+c_left, c_right = st.columns([3, 1])
 logo_base64 = get_base64_image("Logo_PT_Geoservices_4K_Transparent.jpg")
 
 with c_left:
-  c_img, c_txt = st.columns(2)
+  c_img, c_txt = st.columns([1, 6])
   with c_img:
     if logo_base64:
       st.markdown(
@@ -120,12 +127,6 @@ st.write("")
 # ==========================================
 # CORE PROCESSING ENGINE
 # ==========================================
-def clean_str_key(val):
-  if pd.isna(val) or val == "-" or str(val).lower() == "nan":
-    return ""
-  return re.sub(r"[^A-Z0-9]", "", str(val).upper().strip())
-
-
 @st.cache_data
 def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
   pr_df = pd.read_excel(pr_new, header=1)
@@ -139,15 +140,9 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
       "Item_Name",
       "PR_Qty",
   ]
-  pr_data["PR_Qty_Num"] = pd.to_numeric(
-      pr_data["PR_Qty"], errors="coerce"
-  ).fillna(0)
-  pr_data = pr_data[pr_data["PR_Qty_Num"] > 0].copy()
-  pr_data["Item_Code"] = (
-      pr_data["Item_Code"].astype(str).str.strip().str.upper()
-  )
+  pr_data["Item_Code"] = pr_data["Item_Code"].astype(str).str.strip()
   pr_data["PR_Manual_No_Clean"] = (
-      pr_data["PR_Manual_No"].astype(str).str.strip().str.upper()
+      pr_data["PR_Manual_No"].astype(str).str.replace(" ", "")
   )
   pr_data["PR_Date"] = pd.to_datetime(pr_data["PR_Date"], errors="coerce")
   pr_data = pr_data[
@@ -159,11 +154,9 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
   pr_2426_df = pd.read_excel(pr_old, sheet_name=0, header=None)
   closed_info = pr_2426_df.iloc[7:, [2, 6, 7]].copy()
   closed_info.columns = ["PR_Manual_No", "RequestClosed", "Item_Code"]
-  closed_info["Item_Code"] = (
-      closed_info["Item_Code"].astype(str).str.strip().str.upper()
-  )
+  closed_info["Item_Code"] = closed_info["Item_Code"].astype(str).str.strip()
   closed_info["PR_Manual_No_Clean"] = (
-      closed_info["PR_Manual_No"].astype(str).str.strip().str.upper()
+      closed_info["PR_Manual_No"].astype(str).str.replace(" ", "")
   )
   closed_info = closed_info.drop_duplicates(
       subset=["PR_Manual_No_Clean", "Item_Code"], keep="last"
@@ -178,76 +171,53 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
   pr_data["RequestClosed"] = pr_data["RequestClosed"].fillna("No")
 
   def clean_po(file, tipe):
-    po = pd.read_excel(file, header=13)
-    cols_to_pull = [
-        "Purchase Order Number",
-        "PO Date",
-        "PR Manual No.",
-        "Item Code",
-        "Qty",
-        "Unnamed: 5",
-    ]
-    raw_cols = po.columns.astype(str)
-    status_col_match = [c for c in raw_cols if "status" in c.lower()]
-    if status_col_match:
-      cols_to_pull.append(status_col_match[0])
+    po_raw = pd.read_excel(file, header=13)
+    
+    # 🔥 SAPU BERSIH REJECTED SEBELUM KOLOM DIPOTONG 🔥
+    # Cek tiap kolom, kalau baris itu mengandung kata 'REJECT', langsung di-drop
+    mask_rejected = pd.Series(False, index=po_raw.index)
+    for col in po_raw.columns:
+        mask_rejected = mask_rejected | po_raw[col].astype(str).str.upper().str.contains("REJECT", na=False)
+    
+    # Simpan hanya baris yang TIDAK rejected
+    po = po_raw[~mask_rejected].copy()
 
-    cols_available = [c for c in cols_to_pull if c in po.columns]
-    po = po[cols_available].copy()
-
-    rename_map = {}
-    standard_names = [
+    # Baru potong kolom sesuai aslinya yang berfungsi
+    po = po[
+        [
+            "Purchase Order Number",
+            "PO Date",
+            "PR Manual No.",
+            "Item Code",
+            "Qty",
+            "Unnamed: 5",
+        ]
+    ].copy()
+    po.columns = [
         "PO_No",
         "PO_Date",
         "PR_Manual_No_Orig",
         "Item_Code",
         "PO_Qty",
         "Vendor",
-        "PO_Status_Raw",
     ]
-    for i, col_name in enumerate(cols_available):
-      if i < len(standard_names):
-        rename_map[col_name] = standard_names[i]
-
-    po.rename(columns=rename_map, inplace=True)
-    if "PO_Status_Raw" not in po.columns:
-      po["PO_Status_Raw"] = "Active"
-    if "PO_No" not in po.columns:
-      po["PO_No"] = ""
-    if "PO_Date" not in po.columns:
-      po["PO_Date"] = pd.NaT
-    if "Vendor" not in po.columns:
-      po["Vendor"] = "-"
-    if "PO_Qty" not in po.columns:
-      po["PO_Qty"] = 0
-
-    po["PO_No"] = po["PO_No"].ffill().astype(str).str.strip()
+    po["PO_No"] = po["PO_No"].ffill()
     po["PO_Date"] = po["PO_Date"].ffill()
     po["Vendor"] = po["Vendor"].ffill()
     po = po.dropna(subset=["Item_Code"])
     po = po[po["Item_Code"].astype(str).str.strip() != "nan"]
-    po["Item_Code"] = po["Item_Code"].astype(str).str.strip().str.upper()
     po["Tipe_PO"] = tipe
     return po
 
   po_df = pd.concat(
-      [clean_po(po_lok, "Lokal"), clean_po(po_imp, "Impor")],
-      ignore_index=True,
+      [clean_po(po_lok, "Lokal"), clean_po(po_imp, "Impor")], ignore_index=True
   )
-
-  # [NEW] BUANG PO YANG STATUS-NYA REJECTED
-  if "PO_Status_Raw" in po_df.columns:
-    po_df = po_df[
-        ~po_df["PO_Status_Raw"]
-        .astype(str)
-        .str.upper()
-        .str.contains("REJECT|DECLINE", na=False)
-    ]
+  po_df["Item_Code"] = po_df["Item_Code"].astype(str).str.strip()
 
   expanded_rows = []
   for _, row in po_df.iterrows():
     pr_str = str(row["PR_Manual_No_Orig"]).strip()
-    if pr_str in ("", "nan", "None", "-"):
+    if pd.isna(pr_str) or pr_str == "nan":
       continue
     if "," in pr_str or "/" in pr_str:
       parts = re.split(r"[,/]", pr_str)
@@ -259,57 +229,37 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
             base_prefix = match.group(1)
         new_row = row.to_dict()
         new_row["PR_Manual_No_Clean"] = (
-            (base_prefix + p).replace(" ", "").upper()
+            (base_prefix + p).replace(" ", "")
             if p.isdigit() and base_prefix
-            else p.replace(" ", "").upper()
+            else p.replace(" ", "")
         )
         expanded_rows.append(new_row)
     else:
       new_row = row.to_dict()
-      new_row["PR_Manual_No_Clean"] = pr_str.replace(" ", "").upper()
+      new_row["PR_Manual_No_Clean"] = pr_str.replace(" ", "")
       expanded_rows.append(new_row)
 
   po_exp = pd.DataFrame(expanded_rows)
-  if not po_exp.empty:
-    po_exp["PO_Date"] = pd.to_datetime(po_exp["PO_Date"], errors="coerce")
-    po_exp["PO_Qty_Num"] = pd.to_numeric(
-        po_exp["PO_Qty"], errors="coerce"
-    ).fillna(0)
-    po_exp = po_exp.drop_duplicates(
-        subset=["PR_Manual_No_Clean", "Item_Code", "PO_No"], keep="last"
-    )
+  po_exp["PO_Date"] = pd.to_datetime(po_exp["PO_Date"], errors="coerce")
+  po_exp["PO_Qty"] = pd.to_numeric(po_exp["PO_Qty"], errors="coerce").fillna(0)
 
-    po_agg = (
-        po_exp.groupby(["PR_Manual_No_Clean", "Item_Code"], as_index=False)
-        .agg(
-            PO_No=(
-                "PO_No",
-                lambda x: ", ".join(x.dropna().unique().astype(str)),
-            ),
-            PO_Date=("PO_Date", "max"),
-            PO_Qty=("PO_Qty_Num", "sum"),
-            Vendor=(
-                "Vendor",
-                lambda x: ", ".join(x.dropna().unique().astype(str)),
-            ),
-            Tipe_PO=(
-                "Tipe_PO",
-                lambda x: ", ".join(x.dropna().unique().astype(str)),
-            ),
-        )
-    )
-  else:
-    po_agg = pd.DataFrame(
-        columns=[
-            "PR_Manual_No_Clean",
-            "Item_Code",
-            "PO_No",
-            "PO_Date",
-            "PO_Qty",
-            "Vendor",
-            "Tipe_PO",
-        ]
-    )
+  po_agg = (
+      po_exp.groupby(["PR_Manual_No_Clean", "Item_Code"])
+      .agg(
+          PO_No=("PO_No", lambda x: ", ".join(x.dropna().unique().astype(str))),
+          PO_Date=("PO_Date", "max"),
+          PO_Qty=("PO_Qty", "sum"),
+          Vendor=(
+              "Vendor",
+              lambda x: ", ".join(x.dropna().unique().astype(str)),
+          ),
+          Tipe_PO=(
+              "Tipe_PO",
+              lambda x: ", ".join(x.dropna().unique().astype(str)),
+          ),
+      )
+      .reset_index()
+  )
 
   merged = pd.merge(
       pr_data, po_agg, on=["PR_Manual_No_Clean", "Item_Code"], how="left"
@@ -323,14 +273,8 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
   inb_df = pd.concat(
       [pd.read_excel(inb_xls, sheet_name=s) for s in inb_xls.sheet_names]
   )
-  inb_df["ItemCode"] = (
-      inb_df["ItemCode"].astype(str).str.strip().str.upper()
-  )
+  inb_df["ItemCode"] = inb_df["ItemCode"].astype(str).str.strip()
   inb_df["POnumber"] = inb_df["POnumber"].astype(str).str.strip()
-  inb_df["ReceivedDate"] = pd.to_datetime(
-      inb_df["ReceivedDate"], errors="coerce"
-  )
-  inb_df["RcvQty"] = pd.to_numeric(inb_df["RcvQty"], errors="coerce").fillna(0)
   inb_agg = (
       inb_df.groupby(["POnumber", "ItemCode"])
       .agg(Rcv_Date=("ReceivedDate", "max"), Rcv_Qty=("RcvQty", "sum"))
@@ -338,15 +282,14 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
   )
 
   def get_inb(po_str, item_code):
-    if pd.isna(po_str) or str(po_str) == "":
-      return pd.Series({"Rcv_Date": pd.NaT, "Rcv_Qty": 0.0})
-    pos = [p.strip() for p in str(po_str).split(",") if p.strip()]
-    c_item = str(item_code).strip().upper()
+    if pd.isna(po_str) or po_str == "":
+      return pd.Series({"Rcv_Date": pd.NaT, "Rcv_Qty": 0})
+    pos = [p.strip() for p in po_str.split(",")]
     subset = inb_agg[
-        (inb_agg["POnumber"].isin(pos)) & (inb_agg["ItemCode"] == c_item)
+        (inb_agg["POnumber"].isin(pos)) & (inb_agg["ItemCode"] == item_code)
     ]
     if subset.empty:
-      return pd.Series({"Rcv_Date": pd.NaT, "Rcv_Qty": 0.0})
+      return pd.Series({"Rcv_Date": pd.NaT, "Rcv_Qty": 0})
     return pd.Series(
         {"Rcv_Date": subset["Rcv_Date"].max(), "Rcv_Qty": subset["Rcv_Qty"].sum()}
     )
@@ -354,9 +297,6 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
   merged[["Rcv_Date", "Rcv_Qty"]] = merged.apply(
       lambda row: get_inb(row["PO_No"], row["Item_Code"]), axis=1
   )
-
-  merged["PO_Qty"] = pd.to_numeric(merged["PO_Qty"], errors="coerce").fillna(0)
-  merged["Rcv_Qty"] = pd.to_numeric(merged["Rcv_Qty"], errors="coerce").fillna(0)
 
   def get_status(row):
     if row["PO_No"] == "":
@@ -370,25 +310,26 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
 
   merged["Status"] = merged.apply(get_status, axis=1)
 
+  # Kalkulasi Qty Outstanding
+  merged["PO_Qty"] = pd.to_numeric(merged["PO_Qty"], errors="coerce").fillna(0)
+  merged["Rcv_Qty"] = pd.to_numeric(merged["Rcv_Qty"], errors="coerce").fillna(0)
+  merged['PR_Qty'] = pd.to_numeric(merged['PR_Qty'], errors="coerce").fillna(0)
+  
+  # Aturan: Routing Approval = full PR_Qty, sisanya PO_Qty - Rcv_Qty
   def calc_outstanding(row):
-    if row["Status"] == "Routing Approval":
-      return row["PR_Qty_Num"]
-    return max(0.0, row["PO_Qty"] - row["Rcv_Qty"])
-
+      if row['Status'] == 'Routing Approval':
+          return row['PR_Qty']
+      return max(0, row['PO_Qty'] - row['Rcv_Qty'])
+      
   merged["Qty_Outstanding"] = merged.apply(calc_outstanding, axis=1)
 
-  merged["PR_Date"] = pd.to_datetime(
-      merged["PR_Date"], errors="coerce"
-  ).dt.strftime("%m/%d/%Y")
-  merged["PO_Date"] = pd.to_datetime(
-      merged["PO_Date"], errors="coerce"
-  ).dt.strftime("%m/%d/%Y")
-  merged["Rcv_Date"] = pd.to_datetime(
-      merged["Rcv_Date"], errors="coerce"
-  ).dt.strftime("%m/%d/%Y")
-  merged["PR_Date"] = merged["PR_Date"].fillna("-")
-  merged["PO_Date"] = merged["PO_Date"].fillna("-")
-  merged["Rcv_Date"] = merged["Rcv_Date"].fillna("-")
+  merged["PR_Date"] = merged["PR_Date"].dt.strftime("%m/%d/%Y").fillna("-")
+  merged["PO_Date"] = merged["PO_Date"].dt.strftime("%m/%d/%Y").fillna("-")
+  merged["Rcv_Date"] = (
+      pd.to_datetime(merged["Rcv_Date"], errors="coerce")
+      .dt.strftime("%m/%d/%Y")
+      .fillna("-")
+  )
   merged["Vendor"] = merged["Vendor"].fillna("-")
   merged["Tipe_PO"] = merged["Tipe_PO"].fillna("-")
 
@@ -397,7 +338,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
       "PR_Manual_No",
       "Item_Code",
       "Item_Name",
-      "PR_Qty_Num",
+      "PR_Qty",
       "PO_Date",
       "PO_No",
       "Vendor",
@@ -408,9 +349,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
       "Qty_Outstanding",
       "Status",
   ]
-  res = merged[final_cols].copy()
-  res.rename(columns={"PR_Qty_Num": "PR_Qty"}, inplace=True)
-  return res
+  return merged[final_cols]
 
 
 def get_formatted_archive_list():
@@ -444,17 +383,21 @@ selected_tab = st.radio(
 )
 
 st.markdown(
-    """<hr style="margin: 5px 0 15px 0; border: none; border-top: 1px solid"
-    "#1e3d59;">""",
+    """<hr style="margin: 5px 0 15px 0; border: none; border-top: 1px solid #1e3d59;">""",
     unsafe_allow_html=True,
 )
 
+# ==========================================
+# TAB 1: DASHBOARD
+# ==========================================
 if selected_tab == "📊 Dashboard":
   st.subheader("Purchase Data Tracking | Executive Dashboard")
+
   if "df_final" in st.session_state:
     df_final = st.session_state["df_final"]
     if "last_saved" in st.session_state:
       st.caption(f"📁 Active Dataset: `{st.session_state['last_saved']}`")
+
     c1, c2, c3, c4 = st.columns(4)
     status_counts = df_final["Status"].value_counts()
     with c1:
@@ -501,10 +444,12 @@ if selected_tab == "📊 Dashboard":
     st.dataframe(df_final.head(100), use_container_width=True, height=380)
   else:
     st.warning(
-        "⚠️ Belum ada file arsip ditemukan. Silakan proses data melalui menu"
-        " **⚙️ Proses Data**."
+        "⚠️ Belum ada file arsip ditemukan. Silakan proses data melalui menu **⚙️ Proses Data**."
     )
 
+# ==========================================
+# TAB 2: PROSES DATA
+# ==========================================
 elif selected_tab == "⚙️ Proses Data":
   st.subheader("Purchase Data Tracking | Processing Center")
   sub_proc_option = st.radio(
@@ -519,10 +464,7 @@ elif selected_tab == "⚙️ Proses Data":
 
   if sub_proc_option == "1. Purchase Data Tracking (Full ETL)":
     st.markdown(
-        f'<div class="erp-panel">Unggah dokumen sumber (.xlsx). Sistem'
-        " menormalisasi spasi, konsolidasi multi-PR, dan membuang PO berstatus"
-        " <i>Rejected</i>. Hasil disimpan permanen di folder lokal"
-        f" <code>{OUTPUT_FOLDER}</code>.</div>",
+        f'<div class="erp-panel">Unggah dokumen sumber (.xlsx). Sistem menormalisasi spasi, konsolidasi multi-PR, dan membuang PO berstatus <i>Rejected</i>. Hasil disimpan permanen di folder lokal <code>{OUTPUT_FOLDER}</code>.</div>',
         unsafe_allow_html=True,
     )
     col_u1, col_u2 = st.columns(2)
@@ -573,18 +515,14 @@ elif selected_tab == "⚙️ Proses Data":
           st.session_state["last_saved"] = saved_filename
           time_wib_str = now_dt.strftime("%d/%m/%Y pukul %H:%M:%S WIB")
           st.success(
-              "✅ Data berhasil diproses & disimpan permanen di lokal:"
-              f" `{saved_filepath}` pada **{time_wib_str}**!"
+              f"✅ Data berhasil diproses & disimpan permanen di lokal: `{saved_filepath}` pada **{time_wib_str}**!"
           )
       else:
         st.error("⚠️ Error: Kelima file sumber wajib diunggah lengkap!")
 
   elif sub_proc_option == "2. Outstanding Information (Filter by Item Code)":
     st.markdown(
-        '<div class="erp-panel">Unggah file Excel berisi kolom <b>Item Code</b>.'
-        " Sistem akan otomatis menduplikasi yang unik, mencocokkan ke arsip"
-        " terbaru, mengecualikan status <b>Sudah Diterima</b>, dan menghitung"
-        " <b>Qty_Outstanding</b>.</div>",
+        '<div class="erp-panel">Unggah file Excel berisi kolom <b>Item Code</b>. Sistem akan otomatis menduplikasi yang unik, mencocokkan ke arsip terbaru, mengecualikan status <b>Sudah Diterima</b>, dan menghitung <b>Qty_Outstanding</b>.</div>',
         unsafe_allow_html=True,
     )
 
@@ -598,8 +536,7 @@ elif selected_tab == "⚙️ Proses Data":
         latest_path, latest_name = get_latest_archive_filepath()
         if not latest_path:
           st.error(
-              "⚠️ Belum ada file arsip dasar di server/lokal. Jalankan Full"
-              " ETL terlebih dahulu!"
+              "⚠️ Belum ada file arsip dasar di server/lokal. Jalankan Full ETL terlebih dahulu!"
           )
         else:
           try:
@@ -638,9 +575,7 @@ elif selected_tab == "⚙️ Proses Data":
               filtered_df = filtered_df.drop(columns=["Item_Code_Clean"])
 
             st.success(
-                "✅ Berhasil memproses! Menemukan"
-                f" {len(filtered_df)} baris data outstanding dari"
-                f" {len(unique_item_codes)} unique item code unik."
+                f"✅ Berhasil memproses! Menemukan {len(filtered_df)} baris data outstanding dari {len(unique_item_codes)} unique item code unik."
             )
             st.dataframe(filtered_df, use_container_width=True, height=400)
 
@@ -653,28 +588,21 @@ elif selected_tab == "⚙️ Proses Data":
                 label="📥 Download Outstanding Report (.xlsx)",
                 data=out_io.getvalue(),
                 file_name=f"Outstanding_Report_{timestamp_file}.xlsx",
-                mime=(
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml"
-                    ".sheet"
-                ),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary",
             )
           except Exception as e:
-            st.error(
-                "❌ Terjadi kesalahan saat membaca file/memproses:"
-                f" {e}"
-            )
+            st.error(f"❌ Terjadi kesalahan saat membaca file/memproses: {e}")
       else:
-        st.warning(
-            "⚠️ Mohon unggah file Excel berisi Item Code terlebih dahulu."
-        )
+        st.warning("⚠️ Mohon unggah file Excel berisi Item Code terlebih dahulu.")
 
+# ==========================================
+# TAB 3: DOWNLOAD / ARSIP
+# ==========================================
 elif selected_tab == "📥 Download / Arsip":
   st.subheader("Purchase Data Tracking | Audit & Document Repository")
   st.markdown(
-      f'<div class="erp-panel">Arsip historis tersimpan aman di direktori lokal'
-      f" <code>{OUTPUT_FOLDER}</code>. Waktu tercatat dalam WIB (Zona Waktu"
-      " Jakarta). File terbaru diberi penanda khusus.</div>",
+      f'<div class="erp-panel">Arsip historis tersimpan aman di direktori lokal <code>{OUTPUT_FOLDER}</code>. Waktu tercatat dalam WIB (Zona Waktu Jakarta). File terbaru diberi penanda khusus.</div>',
       unsafe_allow_html=True,
   )
 
@@ -691,27 +619,19 @@ elif selected_tab == "📥 Download / Arsip":
     if os.path.exists(file_path_dl):
       df_preview = pd.read_excel(file_path_dl)
       st.markdown(
-          "**Selected File Metadata:** `📁"
-          f" {selected_filename}` | Total Records: `{len(df_preview)} rows`"
+          f"**Selected File Metadata:** `📁 {selected_filename}` | Total Records: `{len(df_preview)} rows`"
       )
       st.dataframe(df_preview.head(50), use_container_width=True, height=380)
 
       with open(file_path_dl, "rb") as f:
         st.download_button(
-            label=(
-                "📥 Download Repository File"
-                f" ({selected_filename})"
-            ),
+            label=f"📥 Download Repository File ({selected_filename})",
             data=f.read(),
             file_name=selected_filename,
-            mime=(
-                "application/vnd.openxmlformats-officedocument.spreadsheetml"
-                ".sheet"
-            ),
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             type="primary",
         )
   else:
     st.warning(
-        "⚠️ Belum ada file arsip ditemukan pada direktori lokal"
-        f" `{OUTPUT_FOLDER}`."
+        f"⚠️ Belum ada file arsip ditemukan pada direktori lokal `{OUTPUT_FOLDER}`."
     )
