@@ -448,7 +448,7 @@ if selected_tab == "📊 Dashboard":
     df_final = st.session_state['df_final']
     if 'last_saved' in st.session_state:
       st.caption(f"📁 Active Dataset: `{st.session_state['last_saved']}`")
-    c1, c2, c3, c4 = st.columns()
+    c1, c2, c3, c4 = st.columns(4)
     status_counts = df_final['Status'].value_counts()
     with c1:
       st.metric("Routing Approval", status_counts.get("Routing Approval", 0))
