@@ -462,7 +462,7 @@ if selected_tab == "📊 Dashboard":
       st.metric("Sudah Diterima", status_counts.get("Sudah Diterima", 0))
 
     st.write("")
-    col_chart1, col_chart2 = st.columns()
+    col_chart1, col_chart2 = st.columns(2)
     with col_chart1:
       fig_pie = px.pie(
           df_final,
@@ -518,7 +518,7 @@ elif selected_tab == "⚙️ Proses Data":
         f" <code>{OUTPUT_FOLDER}</code>.</div>",
         unsafe_allow_html=True,
     )
-    col_u1, col_u2 = st.columns()
+    col_u1, col_u2 = st.columns(2)
     with col_u1:
       file_pr_2026 = st.file_uploader(
           "PR Data (Base 2026)", type=["xlsx"], key="u_pr_base"
