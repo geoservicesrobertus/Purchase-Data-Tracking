@@ -166,28 +166,40 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
   def clean_po(file, tipe):
     po_raw = pd.read_excel(file, header=13)
     
-    # 1. Forward fill (ffill) SEMUA kolom terlebih dahulu agar item turunan/anak
-    #    mendapatkan status 'Rejected' & metadata PO yang sama dari baris pertamanya.
-    po_filled = po_raw.ffill()
-
-    # 2. Deteksi dan buang semua baris yang mengandung kata REJECT/DECLINE/CANCEL
-    mask_rejected = pd.Series(False, index=po_filled.index)
-    for col in po_filled.columns:
-      mask_rejected = mask_rejected | po_filled[col].astype(str).str.upper().str.contains("REJECT|DECLINE", na=False)
+    # 1. Ffill KHUSUS nomor PO saja dulu, supaya ketahuan tiap baris item punya siapa
+    if "Purchase Order Number" in po_raw.columns:
+        po_raw["Purchase Order Number"] = po_raw["Purchase Order Number"].ffill()
     
-    po = po_filled[~mask_rejected].copy()
+    # 2. Cari nomor PO yang benar-benar mengandung REJECT/DECLINE
+    rejected_po_list = set()
+    for col in po_raw.columns:
+        mask_rejected = po_raw[col].astype(str).str.upper().str.contains("REJECT|DECLINE", na=False)
+        if "Purchase Order Number" in po_raw.columns:
+            # Ambil nomor PO dari baris yang kena mask
+            bad_pos = po_raw.loc[mask_rejected, "Purchase Order Number"].dropna().unique()
+            rejected_po_list.update(bad_pos)
+            
+    # 3. Buang keseluruhan blok baris dari PO yang masuk blacklist REJECTED
+    if "Purchase Order Number" in po_raw.columns:
+        po_safe = po_raw[~po_raw["Purchase Order Number"].isin(rejected_po_list)].copy()
+    else:
+        po_safe = po_raw.copy()
+        
+    # 4. Sekarang baru AMAN melakukan Ffill untuk Date, Vendor, dll
+    #    (Karena PO cacat sudah dibuang, statusnya gak akan tumpah/bocor ke PO bawahnya)
+    po_filled = po_safe.ffill()
 
-    # 3. Ambil kolom standar yang dibutuhkan
+    # 5. Ekstrak kolom standar
     cols_to_pull = [
         "Purchase Order Number",
         "PO Date",
         "PR Manual No.",
         "Item Code",
         "Qty",
-        "Unnamed: 5",
+        "Unnamed: 5", # Kolom Vendor di format Geoservices
     ]
-    cols_available = [c for c in cols_to_pull if c in po.columns]
-    po = po[cols_available].copy()
+    cols_available = [c for c in cols_to_pull if c in po_filled.columns]
+    po = po_filled[cols_available].copy()
 
     rename_map = {}
     standard_names = [
@@ -204,7 +216,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
 
     po.rename(columns=rename_map, inplace=True)
     
-    # Fallback jika ada kolom kustom yang absen
+    # Fallback
     if "PO_No" not in po.columns: po["PO_No"] = ""
     if "PO_Date" not in po.columns: po["PO_Date"] = pd.NaT
     if "Vendor" not in po.columns: po["Vendor"] = "-"
