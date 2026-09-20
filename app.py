@@ -134,7 +134,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
       "PR_Qty",
   ]
   
-  # 🔥 Filter PR Qty = 0 di awal sebelum tracking dimulai
+  # Filter PR Qty = 0 di awal sebelum tracking dimulai
   pr_data["PR_Qty"] = pd.to_numeric(pr_data["PR_Qty"], errors="coerce").fillna(0)
   pr_data = pr_data[pr_data["PR_Qty"] > 0].copy()
 
@@ -171,11 +171,9 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
   def clean_po(file, tipe):
     po_raw = pd.read_excel(file, header=13)
     
-    # 1. Ffill KHUSUS nomor PO saja dulu, supaya ketahuan tiap baris item punya siapa
     if "Purchase Order Number" in po_raw.columns:
         po_raw["Purchase Order Number"] = po_raw["Purchase Order Number"].ffill()
     
-    # 2. Cari nomor PO yang harus dibuang (REJECT / DECLINE / CLOSED)
     rejected_po_list = set()
     for col in po_raw.columns:
         is_status_col = "status" in str(col).lower()
@@ -189,20 +187,16 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
             bad_pos = po_raw.loc[mask_rejected, "Purchase Order Number"].dropna().unique()
             rejected_po_list.update(bad_pos)
             
-    # 3. Buang keseluruhan blok baris dari PO yang bermasalah
     if "Purchase Order Number" in po_raw.columns:
         po_safe = po_raw[~po_raw["Purchase Order Number"].isin(rejected_po_list)].copy()
     else:
         po_safe = po_raw.copy()
         
-    # 4. 🔥 [FIX] HANYA FFILL KOLOM HEADER! JANGAN FFILL ITEM CODE & QTY! 🔥
-    # Ini mencegah Item Code duplikat ke baris deskripsi kosong yang bikin Qty jadi dobel 400.
     cols_to_ffill = ["Purchase Order Number", "PO Date", "PR Manual No.", "Unnamed: 5"]
     for c in cols_to_ffill:
         if c in po_safe.columns:
             po_safe[c] = po_safe[c].ffill()
 
-    # 5. Ekstrak kolom standar
     cols_to_pull = [
         "Purchase Order Number",
         "PO Date",
@@ -234,7 +228,6 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     if "Vendor" not in po.columns: po["Vendor"] = "-"
     if "PO_Qty" not in po.columns: po["PO_Qty"] = 0
 
-    # Karena Item_Code gak ikut di-ffill, baris deskripsi yang kosong pasti jadi NaN dan gampang di-drop di sini
     po = po.dropna(subset=["Item_Code"])
     po = po[po["Item_Code"].astype(str).str.strip() != "nan"]
     po["Tipe_PO"] = tipe
@@ -545,14 +538,14 @@ elif selected_tab == "⚙️ Proses Data":
 
   elif sub_proc_option == "2. Outstanding Information (Filter by Item Code)":
     st.markdown(
-        '<div class="erp-panel">Unggah file Excel berisi kolom <b>Item Code</b>. Sistem akan otomatis menduplikasi yang unik, mencocokkan ke arsip terbaru, mengecualikan status <b>Sudah Diterima</b>, dan menghitung <b>Qty_Outstanding</b>.</div>',
+        '<div class="erp-panel">Unggah file <b>Purchase Plan.xlsx</b> (atau file apapun yg punya kolom Item Code). Sistem akan memuat SEMUA data bawaan dari file tersebut ditambah detail Outstanding (tanggal, nomor PO, status) dari arsip terbaru menjadi 1 baris agregat per item code.</div>',
         unsafe_allow_html=True,
     )
 
     file_item_input = st.file_uploader(
-        "Upload File Item Code (.xlsx)", type=["xlsx"], key="u_item_filter"
+        "Upload File Base / Purchase Plan (.xlsx)", type=["xlsx"], key="u_item_filter"
     )
-    run_filter = st.button("🔍 Generate Outstanding Report", type="primary")
+    run_filter = st.button("🔍 Generate Plan Report", type="primary")
 
     if run_filter:
       if file_item_input is not None:
@@ -566,58 +559,73 @@ elif selected_tab == "⚙️ Proses Data":
             df_base_master = pd.read_excel(latest_path)
             df_item_upload = pd.read_excel(file_item_input)
 
+            # Cari kolom yang mirip item code
             target_col = None
             for col in df_item_upload.columns:
               if "item" in str(col).lower() and "code" in str(col).lower():
                 target_col = col
                 break
             if not target_col:
-              target_col = df_item_upload.columns[0]
+              target_col = df_item_upload.columns[0] # Fallback kolom pertama
 
-            unique_item_codes = (
-                df_item_upload[target_col]
-                .dropna()
-                .astype(str)
-                .str.strip()
-                .str.upper()
-                .unique()
-            )
+            # 1. Bikin ID Matcher yang seragam
+            df_item_upload["Item_Code_Clean"] = df_item_upload[target_col].astype(str).str.strip().str.upper()
+            df_base_master["Item_Code_Clean"] = df_base_master["Item_Code"].astype(str).str.strip().str.upper()
 
-            df_base_master["Item_Code_Clean"] = (
-                df_base_master["Item_Code"]
-                .astype(str)
-                .str.strip()
-                .str.upper()
-            )
-            filtered_df = df_base_master[
-                df_base_master["Item_Code_Clean"].isin(unique_item_codes)
-                & (df_base_master["Status"] != "Sudah Diterima")
-            ].copy()
+            # 2. Filter status dari Master (Abaikan yg Sudah Diterima jika diinginkan)
+            # Opsional: lu bisa buang filter '!= Sudah Diterima' kalau lu mau SEMUA status keliatan di Purchase Plan.
+            # Berhubung instruksi lu "exclude 'Sudah Diterima' dan hitung Qty_Outstanding", kita pake:
+            df_active = df_base_master[df_base_master["Status"] != "Sudah Diterima"].copy()
 
-            if "Item_Code_Clean" in filtered_df.columns:
-              filtered_df = filtered_df.drop(columns=["Item_Code_Clean"])
+            # 3. Fungsi Agregasi Khusus biar jadi 1 baris
+            def join_unique(series):
+                cleaned = [str(x) for x in series.dropna().unique() if str(x) not in ('-', '', 'nan', 'NaT')]
+                return ", ".join(cleaned) if cleaned else "-"
+
+            agg_rules = {}
+            if "Qty_Outstanding" in df_active.columns:
+                agg_rules["Qty_Outstanding"] = "sum"
+            if "PR_Date" in df_active.columns: agg_rules["PR_Date"] = join_unique
+            if "PR_Manual_No" in df_active.columns: agg_rules["PR_Manual_No"] = join_unique
+            if "PO_Date" in df_active.columns: agg_rules["PO_Date"] = join_unique
+            if "PO_No" in df_active.columns: agg_rules["PO_No"] = join_unique
+            if "Status" in df_active.columns: agg_rules["Status"] = join_unique
+
+            df_agg = df_active.groupby("Item_Code_Clean").agg(agg_rules).reset_index()
+
+            # 4. Gabung File Asli dengan Hasil Agregat (Left Join)
+            filtered_df = pd.merge(df_item_upload, df_agg, on="Item_Code_Clean", how="left")
+
+            # 5. Rapikan cell kosong hasil merge
+            if "Qty_Outstanding" in filtered_df.columns:
+                filtered_df["Qty_Outstanding"] = filtered_df["Qty_Outstanding"].fillna(0)
+            for col in agg_rules.keys():
+                if col != "Qty_Outstanding" and col in filtered_df.columns:
+                    filtered_df[col] = filtered_df[col].fillna("-")
+
+            filtered_df = filtered_df.drop(columns=["Item_Code_Clean"])
 
             st.success(
-                f"✅ Berhasil memproses! Menemukan {len(filtered_df)} baris data outstanding dari {len(unique_item_codes)} unique item code unik."
+                f"✅ Berhasil memproses! Menampilkan file asli + tracking update untuk {len(filtered_df)} baris data."
             )
             st.dataframe(filtered_df, use_container_width=True, height=400)
 
             out_io = BytesIO()
             filtered_df.to_excel(
-                out_io, index=False, sheet_name="Outstanding Report"
+                out_io, index=False, sheet_name="Purchase Plan Updated"
             )
             timestamp_file = datetime.now(WIB).strftime("%Y%m%d_%H%M%S")
             st.download_button(
-                label="📥 Download Outstanding Report (.xlsx)",
+                label="📥 Download Purchase Plan Updated (.xlsx)",
                 data=out_io.getvalue(),
-                file_name=f"Outstanding_Report_{timestamp_file}.xlsx",
+                file_name=f"Purchase_Plan_Updated_{timestamp_file}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary",
             )
           except Exception as e:
             st.error(f"❌ Terjadi kesalahan saat membaca file/memproses: {e}")
       else:
-        st.warning("⚠️ Mohon unggah file Excel berisi Item Code terlebih dahulu.")
+        st.warning("⚠️ Mohon unggah file Excel Purchase Plan / Filter terlebih dahulu.")
 
 elif selected_tab == "📥 Download / Arsip":
   st.subheader("Purchase Data Tracking | Audit & Document Repository")
