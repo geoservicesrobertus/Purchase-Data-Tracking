@@ -46,7 +46,6 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 WIB = ZoneInfo("Asia/Jakarta")
 
 
-# Helper: Load local logo as base64 for guaranteed rendering
 def get_base64_image(image_path):
   if os.path.exists(image_path):
     with open(image_path, "rb") as img_file:
@@ -54,9 +53,6 @@ def get_base64_image(image_path):
   return None
 
 
-# ==========================================
-# AUTO-LOAD LATEST REPORT ON STARTUP (NON-EMPTY)
-# ==========================================
 def get_latest_archive_filepath():
   files = [f for f in os.listdir(OUTPUT_FOLDER) if f.endswith(".xlsx")]
   if files:
@@ -81,14 +77,11 @@ def auto_load_latest_dashboard():
 
 auto_load_latest_dashboard()
 
-# ==========================================
-# CLEAN CORPORATE HEADER WITH BASE64 LOGO
-# ==========================================
-c_left, c_right = st.columns(2)
+c_left, c_right = st.columns()
 logo_base64 = get_base64_image("Logo_PT_Geoservices_4K_Transparent.jpg")
 
 with c_left:
-  c_img, c_txt = st.columns(2)
+  c_img, c_txt = st.columns()
   with c_img:
     if logo_base64:
       st.markdown(
@@ -186,22 +179,41 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
 
   def clean_po(file, tipe):
     po = pd.read_excel(file, header=13)
-    po = po[[
+    # Sesuaikan ambil kolom termasuk status jika ada di file PO mentah (misal kolom status/approval)
+    cols_to_pull = [
         "Purchase Order Number",
         "PO Date",
         "PR Manual No.",
         "Item Code",
         "Qty",
         "Unnamed: 5",
-    ]].copy()
-    po.columns = [
-        "PO_No",
-        "PO_Date",
-        "PR_Manual_No_Orig",
-        "Item_Code",
-        "PO_Qty",
-        "Vendor",
     ]
+    # Cek jika ada kolom status/approval (contoh nama kolom generik 'Status' atau 'Approval')
+    raw_cols = po.columns.astype(str)
+    status_col_match = [c for c in raw_cols if "status" in c.lower()]
+    if status_col_match:
+      cols_to_pull.append(status_col_match[0])
+
+    po = po[cols_to_pull].copy()
+    rename_map = {
+        cols_to_pull[0]: "PO_No",
+        cols_to_pull: "PO_Date",
+        cols_to_pull: "PR_Manual_No_Orig",
+        cols_to_pull: "Item_Code",
+        cols_to_pull[4]: "PO_Qty",
+        cols_to_pull[5]: "Vendor",
+    }
+    if len(cols_to_pull) > 6:
+      rename_map[cols_to_pull[6]] = "PO_Status_Raw"
+    else:
+      rename_map["PO_Status_Raw"] = None
+
+    po.rename(columns=rename_map, inplace=True)
+    if "PO_Status_Raw" in po.columns and po["PO_Status_Raw"] is not None:
+      pass
+    else:
+      po["PO_Status_Raw"] = "Active"
+
     po['PO_No'] = po['PO_No'].ffill().astype(str).str.strip()
     po['PO_Date'] = po['PO_Date'].ffill()
     po['Vendor'] = po['Vendor'].ffill()
@@ -215,6 +227,15 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
       [clean_po(po_lok, "Lokal"), clean_po(po_imp, "Impor")],
       ignore_index=True,
   )
+
+  # [NEW] BUANG PO YANG STATUS-NYA REJECTED
+  if "PO_Status_Raw" in po_df.columns:
+    po_df = po_df[
+        ~po_df["PO_Status_Raw"]
+        .astype(str)
+        .str.upper()
+        .str.contains("REJECT|DECLINE", na=False)
+    ]
 
   expanded_rows = []
   for _, row in po_df.iterrows():
@@ -342,7 +363,6 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
 
   merged['Status'] = merged.apply(get_status, axis=1)
 
-  # Kalkulasi Qty Outstanding rule (Routing Approval = full PR_Qty, selain itu PO_Qty - Rcv_Qty)
   def calc_outstanding(row):
     if row['Status'] == "Routing Approval":
       return row['PR_Qty_Num']
@@ -386,7 +406,6 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
   return res
 
 
-# Format keterangan file arsip menggunakan Zona Waktu Jakarta (WIB) tanpa pip tambahan
 def get_formatted_archive_list():
   files = [f for f in os.listdir(OUTPUT_FOLDER) if f.endswith(".xlsx")]
   if not files:
@@ -423,18 +442,13 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ==========================================
-# TAB 1: DASHBOARD
-# ==========================================
 if selected_tab == "📊 Dashboard":
   st.subheader("Purchase Data Tracking | Executive Dashboard")
-
   if 'df_final' in st.session_state:
     df_final = st.session_state['df_final']
     if 'last_saved' in st.session_state:
       st.caption(f"📁 Active Dataset: `{st.session_state['last_saved']}`")
-
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4 = st.columns()
     status_counts = df_final['Status'].value_counts()
     with c1:
       st.metric("Routing Approval", status_counts.get("Routing Approval", 0))
@@ -448,7 +462,7 @@ if selected_tab == "📊 Dashboard":
       st.metric("Sudah Diterima", status_counts.get("Sudah Diterima", 0))
 
     st.write("")
-    col_chart1, col_chart2 = st.columns(2)
+    col_chart1, col_chart2 = st.columns()
     with col_chart1:
       fig_pie = px.pie(
           df_final,
@@ -484,9 +498,6 @@ if selected_tab == "📊 Dashboard":
         " **⚙️ Proses Data**."
     )
 
-# ==========================================
-# TAB 2: PROSES DATA (2 PILIHAN)
-# ==========================================
 elif selected_tab == "⚙️ Proses Data":
   st.subheader("Purchase Data Tracking | Processing Center")
   sub_proc_option = st.radio(
@@ -502,12 +513,12 @@ elif selected_tab == "⚙️ Proses Data":
   if sub_proc_option == "1. Purchase Data Tracking (Full ETL)":
     st.markdown(
         f'<div class="erp-panel">Unggah dokumen sumber (.xlsx). Sistem'
-        " menormalisasi spasi, konsolidasi multi-PR, dan audit status"
-        " <i>RequestClosed</i>. Hasil disimpan permanen di folder lokal"
+        " menormalisasi spasi, konsolidasi multi-PR, dan membuang PO berstatus"
+        " <i>Rejected</i>. Hasil disimpan permanen di folder lokal"
         f" <code>{OUTPUT_FOLDER}</code>.</div>",
         unsafe_allow_html=True,
     )
-    col_u1, col_u2 = st.columns(2)
+    col_u1, col_u2 = st.columns()
     with col_u1:
       file_pr_2026 = st.file_uploader(
           "PR Data (Base 2026)", type=["xlsx"], key="u_pr_base"
@@ -651,9 +662,6 @@ elif selected_tab == "⚙️ Proses Data":
             "⚠️ Mohon unggah file Excel berisi Item Code terlebih dahulu."
         )
 
-# ==========================================
-# TAB 3: DOWNLOAD / ARSIP
-# ==========================================
 elif selected_tab == "📥 Download / Arsip":
   st.subheader("Purchase Data Tracking | Audit & Document Repository")
   st.markdown(
