@@ -77,11 +77,11 @@ def auto_load_latest_dashboard():
 
 auto_load_latest_dashboard()
 
-c_left, c_right = st.columns(2)
+c_left, c_right = st.columns()
 logo_base64 = get_base64_image("Logo_PT_Geoservices_4K_Transparent.jpg")
 
 with c_left:
-  c_img, c_txt = st.columns(2)
+  c_img, c_txt = st.columns()
   with c_img:
     if logo_base64:
       st.markdown(
@@ -139,31 +139,31 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
       "Item_Name",
       "PR_Qty",
   ]
-  pr_data['PR_Qty_Num'] = pd.to_numeric(
-      pr_data['PR_Qty'], errors="coerce"
+  pr_data["PR_Qty_Num"] = pd.to_numeric(
+      pr_data["PR_Qty"], errors="coerce"
   ).fillna(0)
-  pr_data = pr_data[pr_data['PR_Qty_Num'] > 0].copy()
-  pr_data['Item_Code'] = (
-      pr_data['Item_Code'].astype(str).str.strip().str.upper()
+  pr_data = pr_data[pr_data["PR_Qty_Num"] > 0].copy()
+  pr_data["Item_Code"] = (
+      pr_data["Item_Code"].astype(str).str.strip().str.upper()
   )
-  pr_data['PR_Manual_No_Clean'] = (
-      pr_data['PR_Manual_No'].astype(str).str.strip().str.upper()
+  pr_data["PR_Manual_No_Clean"] = (
+      pr_data["PR_Manual_No"].astype(str).str.strip().str.upper()
   )
-  pr_data['PR_Date'] = pd.to_datetime(pr_data['PR_Date'], errors="coerce")
+  pr_data["PR_Date"] = pd.to_datetime(pr_data["PR_Date"], errors="coerce")
   pr_data = pr_data[
-      pr_data['PR_Manual_No'].notna()
-      & (pr_data['PR_Manual_No'] != "")
-      & (pr_data['PR_Manual_No'].astype(str) != "nan")
+      pr_data["PR_Manual_No"].notna()
+      & (pr_data["PR_Manual_No"] != "")
+      & (pr_data["PR_Manual_No"].astype(str) != "nan")
   ]
 
   pr_2426_df = pd.read_excel(pr_old, sheet_name=0, header=None)
   closed_info = pr_2426_df.iloc[7:, [2, 6, 7]].copy()
   closed_info.columns = ["PR_Manual_No", "RequestClosed", "Item_Code"]
-  closed_info['Item_Code'] = (
-      closed_info['Item_Code'].astype(str).str.strip().str.upper()
+  closed_info["Item_Code"] = (
+      closed_info["Item_Code"].astype(str).str.strip().str.upper()
   )
-  closed_info['PR_Manual_No_Clean'] = (
-      closed_info['PR_Manual_No'].astype(str).str.strip().str.upper()
+  closed_info["PR_Manual_No_Clean"] = (
+      closed_info["PR_Manual_No"].astype(str).str.strip().str.upper()
   )
   closed_info = closed_info.drop_duplicates(
       subset=["PR_Manual_No_Clean", "Item_Code"], keep="last"
@@ -175,11 +175,10 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
       on=["PR_Manual_No_Clean", "Item_Code"],
       how="left",
   )
-  pr_data['RequestClosed'] = pr_data['RequestClosed'].fillna("No")
+  pr_data["RequestClosed"] = pr_data["RequestClosed"].fillna("No")
 
   def clean_po(file, tipe):
     po = pd.read_excel(file, header=13)
-    # Sesuaikan ambil kolom termasuk status jika ada di file PO mentah (misal kolom status/approval)
     cols_to_pull = [
         "Purchase Order Number",
         "PO Date",
@@ -188,39 +187,47 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
         "Qty",
         "Unnamed: 5",
     ]
-    # Cek jika ada kolom status/approval (contoh nama kolom generik 'Status' atau 'Approval')
     raw_cols = po.columns.astype(str)
     status_col_match = [c for c in raw_cols if "status" in c.lower()]
     if status_col_match:
       cols_to_pull.append(status_col_match[0])
 
-    po = po[cols_to_pull].copy()
-    rename_map = {
-        cols_to_pull[0]: "PO_No",
-        cols_to_pull: "PO_Date",
-        cols_to_pull: "PR_Manual_No_Orig",
-        cols_to_pull: "Item_Code",
-        cols_to_pull[4]: "PO_Qty",
-        cols_to_pull[5]: "Vendor",
-    }
-    if len(cols_to_pull) > 6:
-      rename_map[cols_to_pull[6]] = "PO_Status_Raw"
-    else:
-      rename_map["PO_Status_Raw"] = None
+    cols_available = [c for c in cols_to_pull if c in po.columns]
+    po = po[cols_available].copy()
+
+    rename_map = {}
+    standard_names = [
+        "PO_No",
+        "PO_Date",
+        "PR_Manual_No_Orig",
+        "Item_Code",
+        "PO_Qty",
+        "Vendor",
+        "PO_Status_Raw",
+    ]
+    for i, col_name in enumerate(cols_available):
+      if i < len(standard_names):
+        rename_map[col_name] = standard_names[i]
 
     po.rename(columns=rename_map, inplace=True)
-    if "PO_Status_Raw" in po.columns and po["PO_Status_Raw"] is not None:
-      pass
-    else:
+    if "PO_Status_Raw" not in po.columns:
       po["PO_Status_Raw"] = "Active"
+    if "PO_No" not in po.columns:
+      po["PO_No"] = ""
+    if "PO_Date" not in po.columns:
+      po["PO_Date"] = pd.NaT
+    if "Vendor" not in po.columns:
+      po["Vendor"] = "-"
+    if "PO_Qty" not in po.columns:
+      po["PO_Qty"] = 0
 
-    po['PO_No'] = po['PO_No'].ffill().astype(str).str.strip()
-    po['PO_Date'] = po['PO_Date'].ffill()
-    po['Vendor'] = po['Vendor'].ffill()
+    po["PO_No"] = po["PO_No"].ffill().astype(str).str.strip()
+    po["PO_Date"] = po["PO_Date"].ffill()
+    po["Vendor"] = po["Vendor"].ffill()
     po = po.dropna(subset=["Item_Code"])
-    po = po[po['Item_Code'].astype(str).str.strip() != "nan"]
-    po['Item_Code'] = po['Item_Code'].astype(str).str.strip().str.upper()
-    po['Tipe_PO'] = tipe
+    po = po[po["Item_Code"].astype(str).str.strip() != "nan"]
+    po["Item_Code"] = po["Item_Code"].astype(str).str.strip().str.upper()
+    po["Tipe_PO"] = tipe
     return po
 
   po_df = pd.concat(
@@ -239,7 +246,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
 
   expanded_rows = []
   for _, row in po_df.iterrows():
-    pr_str = str(row['PR_Manual_No_Orig']).strip()
+    pr_str = str(row["PR_Manual_No_Orig"]).strip()
     if pr_str in ("", "nan", "None", "-"):
       continue
     if "," in pr_str or "/" in pr_str:
@@ -251,7 +258,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
           if match:
             base_prefix = match.group(1)
         new_row = row.to_dict()
-        new_row['PR_Manual_No_Clean'] = (
+        new_row["PR_Manual_No_Clean"] = (
             (base_prefix + p).replace(" ", "").upper()
             if p.isdigit() and base_prefix
             else p.replace(" ", "").upper()
@@ -259,14 +266,14 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
         expanded_rows.append(new_row)
     else:
       new_row = row.to_dict()
-      new_row['PR_Manual_No_Clean'] = pr_str.replace(" ", "").upper()
+      new_row["PR_Manual_No_Clean"] = pr_str.replace(" ", "").upper()
       expanded_rows.append(new_row)
 
   po_exp = pd.DataFrame(expanded_rows)
   if not po_exp.empty:
-    po_exp['PO_Date'] = pd.to_datetime(po_exp['PO_Date'], errors="coerce")
-    po_exp['PO_Qty_Num'] = pd.to_numeric(
-        po_exp['PO_Qty'], errors="coerce"
+    po_exp["PO_Date"] = pd.to_datetime(po_exp["PO_Date"], errors="coerce")
+    po_exp["PO_Qty_Num"] = pd.to_numeric(
+        po_exp["PO_Qty"], errors="coerce"
     ).fillna(0)
     po_exp = po_exp.drop_duplicates(
         subset=["PR_Manual_No_Clean", "Item_Code", "PO_No"], keep="last"
@@ -307,23 +314,23 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
   merged = pd.merge(
       pr_data, po_agg, on=["PR_Manual_No_Clean", "Item_Code"], how="left"
   )
-  merged['PO_No'] = merged['PO_No'].fillna("")
+  merged["PO_No"] = merged["PO_No"].fillna("")
   merged = merged[
-      ~((merged['PO_No'] == "") & (merged['RequestClosed'] == "Yes"))
+      ~((merged["PO_No"] == "") & (merged["RequestClosed"] == "Yes"))
   ]
 
   inb_xls = pd.ExcelFile(inb)
   inb_df = pd.concat(
       [pd.read_excel(inb_xls, sheet_name=s) for s in inb_xls.sheet_names]
   )
-  inb_df['ItemCode'] = (
-      inb_df['ItemCode'].astype(str).str.strip().str.upper()
+  inb_df["ItemCode"] = (
+      inb_df["ItemCode"].astype(str).str.strip().str.upper()
   )
-  inb_df['POnumber'] = inb_df['POnumber'].astype(str).str.strip()
-  inb_df['ReceivedDate'] = pd.to_datetime(
-      inb_df['ReceivedDate'], errors="coerce"
+  inb_df["POnumber"] = inb_df["POnumber"].astype(str).str.strip()
+  inb_df["ReceivedDate"] = pd.to_datetime(
+      inb_df["ReceivedDate"], errors="coerce"
   )
-  inb_df['RcvQty'] = pd.to_numeric(inb_df['RcvQty'], errors="coerce").fillna(0)
+  inb_df["RcvQty"] = pd.to_numeric(inb_df["RcvQty"], errors="coerce").fillna(0)
   inb_agg = (
       inb_df.groupby(["POnumber", "ItemCode"])
       .agg(Rcv_Date=("ReceivedDate", "max"), Rcv_Qty=("RcvQty", "sum"))
@@ -336,54 +343,54 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     pos = [p.strip() for p in str(po_str).split(",") if p.strip()]
     c_item = str(item_code).strip().upper()
     subset = inb_agg[
-        (inb_agg['POnumber'].isin(pos)) & (inb_agg['ItemCode'] == c_item)
+        (inb_agg["POnumber"].isin(pos)) & (inb_agg["ItemCode"] == c_item)
     ]
     if subset.empty:
       return pd.Series({"Rcv_Date": pd.NaT, "Rcv_Qty": 0.0})
     return pd.Series(
-        {"Rcv_Date": subset['Rcv_Date'].max(), "Rcv_Qty": subset['Rcv_Qty'].sum()}
+        {"Rcv_Date": subset["Rcv_Date"].max(), "Rcv_Qty": subset["Rcv_Qty"].sum()}
     )
 
-  merged[['Rcv_Date', 'Rcv_Qty']] = merged.apply(
-      lambda row: get_inb(row['PO_No'], row['Item_Code']), axis=1
+  merged[["Rcv_Date", "Rcv_Qty"]] = merged.apply(
+      lambda row: get_inb(row["PO_No"], row["Item_Code"]), axis=1
   )
 
-  merged['PO_Qty'] = pd.to_numeric(merged['PO_Qty'], errors="coerce").fillna(0)
-  merged['Rcv_Qty'] = pd.to_numeric(merged['Rcv_Qty'], errors="coerce").fillna(0)
+  merged["PO_Qty"] = pd.to_numeric(merged["PO_Qty"], errors="coerce").fillna(0)
+  merged["Rcv_Qty"] = pd.to_numeric(merged["Rcv_Qty"], errors="coerce").fillna(0)
 
   def get_status(row):
-    if row['PO_No'] == "":
+    if row["PO_No"] == "":
       return "Routing Approval"
-    elif row['Rcv_Qty'] == 0:
+    elif row["Rcv_Qty"] == 0:
       return "Menunggu Pengiriman"
-    elif row['Rcv_Qty'] < row['PO_Qty']:
+    elif row["Rcv_Qty"] < row["PO_Qty"]:
       return "Diterima Sebagian"
     else:
       return "Sudah Diterima"
 
-  merged['Status'] = merged.apply(get_status, axis=1)
+  merged["Status"] = merged.apply(get_status, axis=1)
 
   def calc_outstanding(row):
-    if row['Status'] == "Routing Approval":
-      return row['PR_Qty_Num']
-    return max(0.0, row['PO_Qty'] - row['Rcv_Qty'])
+    if row["Status"] == "Routing Approval":
+      return row["PR_Qty_Num"]
+    return max(0.0, row["PO_Qty"] - row["Rcv_Qty"])
 
-  merged['Qty_Outstanding'] = merged.apply(calc_outstanding, axis=1)
+  merged["Qty_Outstanding"] = merged.apply(calc_outstanding, axis=1)
 
-  merged['PR_Date'] = pd.to_datetime(
-      merged['PR_Date'], errors="coerce"
+  merged["PR_Date"] = pd.to_datetime(
+      merged["PR_Date"], errors="coerce"
   ).dt.strftime("%m/%d/%Y")
-  merged['PO_Date'] = pd.to_datetime(
-      merged['PO_Date'], errors="coerce"
+  merged["PO_Date"] = pd.to_datetime(
+      merged["PO_Date"], errors="coerce"
   ).dt.strftime("%m/%d/%Y")
-  merged['Rcv_Date'] = pd.to_datetime(
-      merged['Rcv_Date'], errors="coerce"
+  merged["Rcv_Date"] = pd.to_datetime(
+      merged["Rcv_Date"], errors="coerce"
   ).dt.strftime("%m/%d/%Y")
-  merged['PR_Date'] = merged['PR_Date'].fillna("-")
-  merged['PO_Date'] = merged['PO_Date'].fillna("-")
-  merged['Rcv_Date'] = merged['Rcv_Date'].fillna("-")
-  merged['Vendor'] = merged['Vendor'].fillna("-")
-  merged['Tipe_PO'] = merged['Tipe_PO'].fillna("-")
+  merged["PR_Date"] = merged["PR_Date"].fillna("-")
+  merged["PO_Date"] = merged["PO_Date"].fillna("-")
+  merged["Rcv_Date"] = merged["Rcv_Date"].fillna("-")
+  merged["Vendor"] = merged["Vendor"].fillna("-")
+  merged["Tipe_PO"] = merged["Tipe_PO"].fillna("-")
 
   final_cols = [
       "PR_Date",
@@ -444,12 +451,12 @@ st.markdown(
 
 if selected_tab == "📊 Dashboard":
   st.subheader("Purchase Data Tracking | Executive Dashboard")
-  if 'df_final' in st.session_state:
-    df_final = st.session_state['df_final']
-    if 'last_saved' in st.session_state:
+  if "df_final" in st.session_state:
+    df_final = st.session_state["df_final"]
+    if "last_saved" in st.session_state:
       st.caption(f"📁 Active Dataset: `{st.session_state['last_saved']}`")
     c1, c2, c3, c4 = st.columns(4)
-    status_counts = df_final['Status'].value_counts()
+    status_counts = df_final["Status"].value_counts()
     with c1:
       st.metric("Routing Approval", status_counts.get("Routing Approval", 0))
     with c2:
@@ -473,7 +480,7 @@ if selected_tab == "📊 Dashboard":
       st.plotly_chart(fig_pie, use_container_width=True)
     with col_chart2:
       top_v = (
-          df_final[df_final['Vendor'] != '-']['Vendor']
+          df_final[df_final["Vendor"] != "-"]["Vendor"]
           .value_counts()
           .head(10)
           .reset_index()
@@ -562,8 +569,8 @@ elif selected_tab == "⚙️ Proses Data":
           saved_filepath = os.path.join(OUTPUT_FOLDER, saved_filename)
           df_final.to_excel(saved_filepath, index=False)
 
-          st.session_state['df_final'] = df_final
-          st.session_state['last_saved'] = saved_filename
+          st.session_state["df_final"] = df_final
+          st.session_state["last_saved"] = saved_filename
           time_wib_str = now_dt.strftime("%d/%m/%Y pukul %H:%M:%S WIB")
           st.success(
               "✅ Data berhasil diproses & disimpan permanen di lokal:"
@@ -601,7 +608,7 @@ elif selected_tab == "⚙️ Proses Data":
 
             target_col = None
             for col in df_item_upload.columns:
-              if 'item' in str(col).lower() and 'code' in str(col).lower():
+              if "item" in str(col).lower() and "code" in str(col).lower():
                 target_col = col
                 break
             if not target_col:
@@ -616,19 +623,19 @@ elif selected_tab == "⚙️ Proses Data":
                 .unique()
             )
 
-            df_base_master['Item_Code_Clean'] = (
-                df_base_master['Item_Code']
+            df_base_master["Item_Code_Clean"] = (
+                df_base_master["Item_Code"]
                 .astype(str)
                 .str.strip()
                 .str.upper()
             )
             filtered_df = df_base_master[
-                df_base_master['Item_Code_Clean'].isin(unique_item_codes)
-                & (df_base_master['Status'] != "Sudah Diterima")
+                df_base_master["Item_Code_Clean"].isin(unique_item_codes)
+                & (df_base_master["Status"] != "Sudah Diterima")
             ].copy()
 
-            if 'Item_Code_Clean' in filtered_df.columns:
-              filtered_df = filtered_df.drop(columns=['Item_Code_Clean'])
+            if "Item_Code_Clean" in filtered_df.columns:
+              filtered_df = filtered_df.drop(columns=["Item_Code_Clean"])
 
             st.success(
                 "✅ Berhasil memproses! Menemukan"
